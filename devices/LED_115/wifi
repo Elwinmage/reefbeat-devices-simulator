@@ -1,1 +1,0 @@
-{"connected":true,"ssid":"Luchtpost","bssid":"XXXXXX","channel":11,"signal_dBm":-64,"auto_connect":false,"auto_reconnect":true,"sleep_mode":"no_sleep","phy_mode":"802.11n","ip":"192.168.10.177","gateway":"192.168.10.254","subnet_mask":"255.255.255.0","dns":"192.168.10.213","mac":"XXXXXX","watchdog_enabled":true,"watchdog_duration":900}

@@ -13,6 +13,7 @@ class MyServer(HTTPServer):
     def __init__(self, handler,config):
         self.config = config
         self.cache={}
+        self.access={}
         #Test if local IP exists
         must_create_ip=True
         for line in subprocess.Popen(
@@ -29,44 +30,53 @@ class MyServer(HTTPServer):
         
 class HttpServer(BaseHTTPRequestHandler):
     def get_data(self,path):
-        if path=='/' or path=='':
-            path="uuid"
-        elif path[0]=='/':
+        if path[0]=='/':
             path= path[1:]
-        self.send_header("Content-type", "application/json")
         if path not in self.server.cache:
-            with open(self.server.config.base_url+'/'+path) as f:
-                if path=='/description.xml':
-                    data=f.read()
-                else:
-                    data = json.dumps(json.load(f))
-                self.server.cache[path]=data
+            try:
+                with open(self.server.config.base_url+'/'+path+'/data') as f:
+                    if path=='description.xml':
+                        data=f.read()
+                    else:
+                        data = json.dumps(json.load(f))
+                        data=data.replace("__REEFBEAT_DEVICE_IP__",self.server.config.ip)
+                    self.server.cache[path]=data
+                with open(self.server.config.base_url+'/'+path+'/access.json') as f:
+                    self.server.access[path] = json.load(f)
+            except Exception as e:
+                print("Exception: %s"%e)
+                return None
         return self.server.cache[path]
                 
     def do_GET (self):
-        #text = bytes("You asked for : {}".format(self.path), "utf8")
-        self.send_response(200)
         print("You asked for : {}".format(self.path))
         data = self.get_data(self.path)
-        
-        print(data)
-        self.end_headers()
-        self.wfile.write(bytes(data,'utf8'))
+        if data:
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(bytes(data,'utf8'))
+        else:
+            self.send_response(404)
+            self.end_headers()
 
     def do_POST (self):
-        #text = bytes("You asked for : {}".format(self.path), "utf8")
-        self.send_response(200)
-        data=bytes("{'status':'ok'}",'utf8')
-        self.send_header("Content-length", str(len(data)))
+        self.send_response(501)
         self.end_headers()
-        self.wfile.write(data)
 
     def do_PUT (self):
-        #text = bytes("You asked for : {}".format(self.path), "utf8")
-        self.send_response(200)
+        data=self.get_data(self.path)
+        if data and "PUT" in self.server.access[self.path[1:]]['rights']: 
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(bytes('{"success":true}','utf8'))
+        else:
+            self.send_response(501)
+            self.end_headers()
 
     def do_DELETE(self):
-        self.send_response(200)
+        self.send_response(501)
+        self.end_headers()
+
 
 
 def ServerProcess(config):
