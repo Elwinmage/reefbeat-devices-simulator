@@ -10,6 +10,7 @@ import time
 from signal import pthread_kill, SIGTSTP
 import pathlib
 import traceback
+from jsonmerge import merge
 
 class MyServer(HTTPServer):
     def __init__(self, handler,config):
@@ -47,16 +48,22 @@ class MyServer(HTTPServer):
                     if hasattr(self.config.access,method) and path in getattr(self.config.access,method):
                         rights+=[method]
                 access={'rights':rights}
-                
                 self._db[path]['access']=access
-        #print(json.dumps(self._db,sort_keys=True, indent=4))
+        for action in self.config.post_actions:
+            self._db[action.request]={}
+            self._db[action.request]['access']={"rights":["POST"]}
+            self._db[action.request]['action']=action.action
+
 
     def update_db(self, path,data):
-        self._db[path]['data']=self._db[path]['data']|data
+        self._db[path]['data']=merge(self._db[path]['data'],data)
     
     def get_data(self,path):
         if path in self._db:
-            return self._db[path]['data']
+            if "data" in self._db[path]:
+                return self._db[path]['data']
+            else:
+                return ""
         return None
 
     def is_allow(self,path,method):
@@ -100,13 +107,20 @@ class HttpServer(BaseHTTPRequestHandler):
             r_data=json.loads(self.rfile.read(int(content_length_str)))
         self.log_reqst(method,r_data)
         data=self.get_data(self.path)
-        if data and self.server.is_allow(self.path,method):
+        if data!=None and self.server.is_allow(self.path,method):
             self.send_response(200)
             self.end_headers()
             if r_data:
-                self.server.update_db(self.path,r_data)
+                post_action=self.server._db[self.path]['action']
+                if post_action:
+                    val=eval(post_action.action)
+                    print(val)
+                    self.server.update_db(post_action.target,val)
+                else:
+                    self.server.update_db(self.path,r_data)
             self.wfile.write(bytes('{"success":true}','utf8'))
         else:
+            self.log("  ==>    %s %s:404"%(method,self.path))
             self.send_response(404)
             self.end_headers()
             

@@ -14,7 +14,15 @@
 	  "/head/3/settings",
 	  "/head/4/settings"
         ]
-      }
+      },
+      "post_actions": [
+	{"request":"/head/4/manual",
+	 "action":{
+	  "target": "/dashboard",
+	  "action": "{'heads':{'4':{'manual_dosed_today':self.server._db['/dashboard']['data']['heads']['4']['manual_dosed_today']+r_data['volume']}}}"
+	 }
+	}
+      ]
     },
     {
       "enabled": false,
