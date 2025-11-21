@@ -113,7 +113,7 @@ do
     wget --quiet -O ${dest}/data http://${IP}${url}
     # Prepare for IP replacement
     sed -i s/"${IP}"/"__REEFBEAT_DEVICE_IP__"/g ${dest}/data
-    echo '{"rights":["GET"]}' > ${dest}/access.json
+    #echo '{"rights":["GET"]}' > ${dest}/access.json
     # Generate a new UUID and friendlyname
     if [ ${dest} == "description.xml" ]
     then

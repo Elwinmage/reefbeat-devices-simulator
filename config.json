@@ -1,6 +1,41 @@
 {
-  "devices":[{"enabled":true,"name":"RSDOSE4","base_url":"devices/DOSE4","ip":"192.168.0.251","port":80},
-	     {"enabled":false,"name":"RSLED_115","base_url":"devices/LED_115","ip":"192.168.0.252","port":80},
-	     {"enabled":false,"name":"LED_G2_60","base_url":"devices/LED_G2_60","ip":"192.168.0.253","port":80},
-	     {"enabled":false,"name":"LED_G1_patch","base_url":"devices/LED_G1_patch","ip":"192.168.0.254","port":80}]
+  "devices": [
+    {
+      "enabled": true,
+      "name": "RSDOSE4",
+      "base_url": "devices/DOSE4",
+      "ip": "192.168.0.251",
+      "port": 80,
+      "access": {
+	"no_GET": [],
+        "PUT": [
+          "/head/1/settings",
+	  "/head/2/settings",
+	  "/head/3/settings",
+	  "/head/4/settings"
+        ]
+      }
+    },
+    {
+      "enabled": false,
+      "name": "RSLED_115",
+      "base_url": "devices/LED_115",
+      "ip": "192.168.0.252",
+      "port": 80
+    },
+    {
+      "enabled": false,
+      "name": "LED_G2_60",
+      "base_url": "devices/LED_G2_60",
+      "ip": "192.168.0.253",
+      "port": 80
+    },
+    {
+      "enabled": false,
+      "name": "LED_G1_patch",
+      "base_url": "devices/LED_G1_patch",
+      "ip": "192.168.0.254",
+      "port": 80
+    }
+  ]
 }
