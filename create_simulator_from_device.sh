@@ -126,7 +126,7 @@ random=`shuf -i 1-281474976710655 -n 1`
 new_hw_id=`echo "obase=16; ${random}" |bc|tr '[:upper:]' '[:lower:]'`
 name=`cat device-info/data |grep -o '"name":"[0-9A-Z\-]*"' |cut -d ':' -f 2 |sed s/'"'/''/g`
 random=`shuf -i 1-9999999999 -n 1`
-#RSLED160-2081858396
+
 new_name="SIMU-"`echo ${name} |sed  s/"\-[0-9]*"/\-${random}/`
 
 echo "Changing name from ${name} to ${new_name}"

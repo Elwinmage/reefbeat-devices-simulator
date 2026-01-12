@@ -22,13 +22,26 @@
 	  "action": "{'heads':{'4':{'manual_dosed_today':self.server._db['/dashboard']['data']['heads']['4']['manual_dosed_today']+r_data['volume']}}}"
 	 }
 	},
+	{"request":"/head/4/setup-supplement",
+	 "action":[
+	   {
+	     "target": "/head/4/settings",
+	     "action": "{'supplement':r_data}"
+	   },
+	   {
+	     "target": "/dashboard",
+	     "action": "{'heads':{'4':{'supplement':r_data['name']}}}"
+	   }
+	 ]
+	},
 	{"request":"/head/3/manual",
-	 "action":{
+	 "action":
+	   {
 	  "target": "/dashboard",
 	  "action": "{'heads':{'3':{'manual_dosed_today':self.server._db['/dashboard']['data']['heads']['3']['manual_dosed_today']+r_data['volume']}}}"
 	 }
 	},
-	{"request":"/head/42manual",
+	{"request":"/head/2/manual",
 	 "action":{
 	  "target": "/dashboard",
 	  "action": "{'heads':{'2':{'manual_dosed_today':self.server._db['/dashboard']['data']['heads']['2']['manual_dosed_today']+r_data['volume']}}}"
@@ -55,26 +68,5 @@
       },
       "post_actions": []
     },
-    {
-      "enabled": false,
-      "name": "RSLED_115",
-      "base_url": "devices/LED_115",
-      "ip": "192.168.0.252",
-      "port": 80
-    },
-    {
-      "enabled": false,
-      "name": "LED_G2_60",
-      "base_url": "devices/LED_G2_60",
-      "ip": "192.168.0.253",
-      "port": 80
-    },
-    {
-      "enabled": false,
-      "name": "LED_G1_patch",
-      "base_url": "devices/LED_G1_patch",
-      "ip": "192.168.0.254",
-      "port": 80
-    }
   ]
 }

@@ -1,0 +1,1 @@
+{"success":true,"message":"","ap_enabled":false,"ap_ip":"","wifi_enabled":true,"wifi_ip":"__REEFBEAT_DEVICE_IP__","rtc_connected":1,"flash_size":16777216,"free_heap":58230,"total_bytes":0,"used_bytes":0,"max_open_files":0,"max_path_length":0,"uptime":"D:037-H:06-m:41-s:47","reset_reason":"ESP_RST_SW","uuid":"521f271d32c8","i2c_devices":[{"device":"externalRtc","address":"0x68"}]}

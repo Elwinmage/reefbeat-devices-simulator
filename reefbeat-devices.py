@@ -92,7 +92,7 @@ class HttpServer(BaseHTTPRequestHandler):
     def do_GET (self):
         self.log_reqst("GET")
         data = self.get_data(self.path)
-        if data and self.server.is_allow(self.path,"GET"):
+        if data!=None and self.server.is_allow(self.path,"GET"):
             self.send_response(200)
             self.end_headers()
             if self.path.endswith('description.xml'):
@@ -119,9 +119,12 @@ class HttpServer(BaseHTTPRequestHandler):
                 except:
                     post_action=None
                 if post_action:
-                    val=eval(post_action.action)
-                    print(val)
-                    self.server.update_db(post_action.target,val)
+                    if(type(post_action).__name__!='list'):
+                        post_action=[post_action]
+                    for p_action in post_action:
+                        val=eval(p_action.action)
+                        print(val)
+                        self.server.update_db(p_action.target,val)
                 else:
                     self.server.update_db(self.path,r_data)
             self.wfile.write(bytes('{"success":true}','utf8'))
