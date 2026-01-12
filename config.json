@@ -2,24 +2,26 @@
   "devices": [
     {
       "enabled": true,
-      "name": "RSDOSE4",
-      "base_url": "devices/DOSE4",
-      "ip": "192.168.0.251",
-      "port": 80,
+      "name": "RSDOSE4", //the type do device 
+      "base_url": "devices/DOSE4", // the path where data are stored
+      "ip": "192.168.0.251", // the ip to create on system for run simulator
+      "port": 80, // the port, do not edit
       "access": {
-	"no_GET": [],
-        "PUT": [
+	"no_GET": [], 
+		  //allowed pur request
+        "PUT": [ 
           "/head/1/settings",
 	  "/head/2/settings",
 	  "/head/3/settings",
 	  "/head/4/settings"
         ]
       },
+		// action on post request
       "post_actions": [
 	{"request":"/head/4/manual",
 	 "action":{
 	  "target": "/dashboard",
-	  "action": "{'heads':{'4':{'manual_dosed_today':self.server._db['/dashboard']['data']['heads']['4']['manual_dosed_today']+r_data['volume']}}}"
+	  "action": "{'heads':{'4':{'manual_dosed_today':self.server._db['/dashboard']['data']['heads']['4']['manual_dosed_today']+r_data['volume']}}}" // this line is evalute in pyhton with r_date the object of the request
 	 }
 	},
 	{"request":"/head/4/setup-supplement",
