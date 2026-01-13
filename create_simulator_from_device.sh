@@ -68,7 +68,7 @@ RUN="/pump/settings"
 
 #WAV
 WAVE="/controlling-mode
-/feeding/schedulle"
+/feeding/schedule"
 
 ping -W 2 -c 1 ${IP} &> /dev/null
 

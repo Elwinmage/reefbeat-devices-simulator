@@ -2,48 +2,33 @@
   "devices": [
     {
       "enabled": true,
-      "name": "RSDOSE4", //the type do device 
-      "base_url": "devices/DOSE4", // the path where data are stored
-      "ip": "192.168.0.251", // the ip to create on system for run simulator
-      "port": 80, // the port, do not edit
+      "name": "RSDOSE4",
+      "base_url": "devices/DOSE4",
+      "ip": "192.168.0.251",
+      "port": 80,
       "access": {
-	"no_GET": [], 
-		  //allowed pur request
-        "PUT": [ 
+	"no_GET": [],
+        "PUT": [
           "/head/1/settings",
 	  "/head/2/settings",
 	  "/head/3/settings",
 	  "/head/4/settings"
         ]
       },
-		// action on post request
       "post_actions": [
 	{"request":"/head/4/manual",
 	 "action":{
 	  "target": "/dashboard",
-	  "action": "{'heads':{'4':{'manual_dosed_today':self.server._db['/dashboard']['data']['heads']['4']['manual_dosed_today']+r_data['volume']}}}" // this line is evalute in pyhton with r_date the object of the request
+	  "action": "{'heads':{'4':{'manual_dosed_today':self.server._db['/dashboard']['data']['heads']['4']['manual_dosed_today']+r_data['volume']}}}"
 	 }
 	},
-	{"request":"/head/4/setup-supplement",
-	 "action":[
-	   {
-	     "target": "/head/4/settings",
-	     "action": "{'supplement':r_data}"
-	   },
-	   {
-	     "target": "/dashboard",
-	     "action": "{'heads':{'4':{'supplement':r_data['name']}}}"
-	   }
-	 ]
-	},
 	{"request":"/head/3/manual",
-	 "action":
-	   {
+	 "action":{
 	  "target": "/dashboard",
 	  "action": "{'heads':{'3':{'manual_dosed_today':self.server._db['/dashboard']['data']['heads']['3']['manual_dosed_today']+r_data['volume']}}}"
 	 }
 	},
-	{"request":"/head/2/manual",
+	{"request":"/head/42manual",
 	 "action":{
 	  "target": "/dashboard",
 	  "action": "{'heads':{'2':{'manual_dosed_today':self.server._db['/dashboard']['data']['heads']['2']['manual_dosed_today']+r_data['volume']}}}"
@@ -59,7 +44,7 @@
       ]
     },
     {
-      "enabled": true,
+      "enabled": false,
       "name": "RSATO",
       "base_url": "devices/ATO",
       "ip": "192.168.0.252",
@@ -69,6 +54,6 @@
         "PUT": []
       },
       "post_actions": []
-    },
+    }
   ]
 }

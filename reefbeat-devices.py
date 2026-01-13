@@ -34,6 +34,7 @@ class MyServer(HTTPServer):
             file_s=str(file_p)
             path = file_s.replace('/data','').replace(self.config.base_url,'')
             self._db[path]={}
+            print(file_s)
             with open(file_s) as f:
                 if file_s.endswith('description.xml/data'):
                     data=f.read()
