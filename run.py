@@ -1,4 +1,20 @@
 #!/usr/bin/env python3
+"""ReefBeat Devices Simulator fixture exporter.
+
+This script snapshots ReefBeat device endpoints from:
+    - The local device HTTP API (by IP), and
+    - Optionally the ReefBeat cloud API (account-level endpoints).
+
+Outputs are written as a fixture tree under ``devices/`` where each endpoint is
+stored as a ``data`` file. Payloads are sanitized to remove secrets/PII while
+preserving stable relationships (e.g. aquarium/device linkage).
+
+Key entrypoints:
+    - ``python run.py scan``: Discover devices (cloud-fast listing or LAN CIDR scan).
+    - ``python run.py --ip <ip>``: Snapshot a local device (type auto-detected).
+    - ``python run.py --cloud``: Export cloud fixtures only.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -33,8 +49,6 @@ except Exception:
 
 handler = logging.StreamHandler()
 if has_colorlog:
-    # fmt = "%(log_color)s%(levelname)s:%(name)s:%(message)s"
-
     formatter = colorlog.ColoredFormatter(  # type: ignore[call-arg]
         "%(log_color)s%(levelname)-8s%(reset)s %(blue)s:%(reset)s %(message)s",
         log_colors={
@@ -51,7 +65,7 @@ else:
 
 root = logging.getLogger()
 root.setLevel(logging.INFO)
-root.handlers[:] = []  # optional: clear existing handlers
+root.handlers[:] = []
 root.addHandler(handler)
 
 logger = logging.getLogger(__name__)
@@ -242,12 +256,10 @@ SANITIZE_MAP_USE_HASH_KEYS: Final[bool] = os.getenv("REEFBEAT_SANITIZE_MAP_USE_H
     "YES",
 }
 
-# Already defined in your codebase; keep as-is:
 _UUID_RE: Final[re.Pattern[str]] = re.compile(r"uuid:[0-9a-zA-Z\-]+")
 
 _EMAIL_RE: Final[re.Pattern[str]] = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _PHONE_RE: Final[re.Pattern[str]] = re.compile(r"\+\d{7,15}")
-# This catches raw UUIDs like "f4c322ba-8f16-4316-8382-5e5a0cf6c88d"
 _RAW_UUID_RE: Final[re.Pattern[str]] = re.compile(
     r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
 )
@@ -267,7 +279,6 @@ class SanitizeMap:
     (In the current debugging mode, keys are stored as raw values.)
     """
 
-    # hashed-original -> sanitized
     user_uid: dict[str, str]
     aquarium_id: dict[str, int]
     aquarium_uid: dict[str, str]
@@ -279,7 +290,6 @@ class SanitizeMap:
     ssid: dict[str, str]
     serial_code: dict[str, str]
 
-    # counters / allocators
     next_aquarium_id: int
     next_ip_host: int
     next_ssid_suffix: int
@@ -288,10 +298,15 @@ class SanitizeMap:
 
 
 def _hash_key(kind: str, raw: str) -> str:
-    """Return a stable key for a raw identifier.
+    """Return the sanitize-map key for a raw identifier.
 
-    Default mode uses SHA256 digests (non-reversible).
-    Debug mode can store raw values for easier tracking.
+    Args:
+        kind: Identifier kind (namespaces the key to reduce collisions).
+        raw: Raw identifier value.
+
+    Returns:
+        A stable key string. In debug mode this is the raw value; otherwise it is a
+        SHA256 digest.
     """
     if not SANITIZE_MAP_USE_HASH_KEYS:
         return raw
@@ -303,6 +318,11 @@ def _hash_key(kind: str, raw: str) -> str:
 
 
 def _sanitize_map_default() -> SanitizeMap:
+    """Create an empty sanitize map with initial counters.
+
+    Returns:
+        A fresh `SanitizeMap` instance suitable for first-run initialization.
+    """
     return SanitizeMap(
         user_uid={},
         aquarium_id={},
@@ -315,7 +335,7 @@ def _sanitize_map_default() -> SanitizeMap:
         ssid={},
         serial_code={},
         next_aquarium_id=111111,
-        next_ip_host=10,  # 10.0.0.<host>
+        next_ip_host=10,
         next_ssid_suffix=1,
         next_device_suffix=1,
         next_device_suffix_by_prefix={},
@@ -323,6 +343,15 @@ def _sanitize_map_default() -> SanitizeMap:
 
 
 def load_sanitize_map(path: Path) -> SanitizeMap:
+    """Load the persistent sanitize map from disk.
+
+    Args:
+        path: Path to the JSON mapping file.
+
+    Returns:
+        A populated `SanitizeMap`. If the file is missing or invalid, returns a
+        default empty map.
+    """
     if not path.exists():
         return _sanitize_map_default()
     try:
@@ -380,6 +409,15 @@ def load_sanitize_map(path: Path) -> SanitizeMap:
 
 
 def save_sanitize_map(path: Path, smap: SanitizeMap) -> None:
+    """Persist the sanitize map to disk atomically.
+
+    Args:
+        path: Output path for the map JSON file.
+        smap: Map object to serialize.
+
+    Returns:
+        None
+    """
     payload: dict[str, Any] = {
         "user_uid": smap.user_uid,
         "aquarium_id": smap.aquarium_id,
@@ -403,11 +441,27 @@ def save_sanitize_map(path: Path, smap: SanitizeMap) -> None:
 
 
 def _alloc_fake_uuid(counter: int) -> str:
-    # Stable, readable UUID-like values that remain valid UUID strings.
+    """Return a stable, readable UUID-like value.
+
+    Args:
+        counter: 1-based counter.
+
+    Returns:
+        A valid UUID string derived from the counter.
+    """
     return f"00000000-0000-0000-0000-{counter:012d}"[-36:]
 
 
 def map_user_uid(raw_uid: str, smap: SanitizeMap) -> str:
+    """Map a raw user UID to a stable sanitized value.
+
+    Args:
+        raw_uid: Raw user UUID.
+        smap: Persistent mapping.
+
+    Returns:
+        Sanitized user UUID.
+    """
     key = _hash_key("user_uid", raw_uid)
     if key in smap.user_uid:
         return smap.user_uid[key]
@@ -416,6 +470,15 @@ def map_user_uid(raw_uid: str, smap: SanitizeMap) -> str:
 
 
 def map_aquarium_id(raw_id: int, smap: SanitizeMap) -> int:
+    """Map a raw aquarium numeric ID to a stable sanitized integer.
+
+    Args:
+        raw_id: Raw aquarium numeric ID.
+        smap: Persistent mapping.
+
+    Returns:
+        Sanitized aquarium numeric ID.
+    """
     key = _hash_key("aquarium_id", str(raw_id))
     if key in smap.aquarium_id:
         return smap.aquarium_id[key]
@@ -425,24 +488,47 @@ def map_aquarium_id(raw_id: int, smap: SanitizeMap) -> int:
 
 
 def map_aquarium_uid(raw_uid: str, smap: SanitizeMap) -> str:
+    """Map a raw aquarium UUID to a stable fake UUID.
+
+    Args:
+        raw_uid: Raw aquarium UUID.
+        smap: Persistent mapping.
+
+    Returns:
+        Sanitized aquarium UUID.
+    """
     key = _hash_key("aquarium_uid", raw_uid)
     if key in smap.aquarium_uid:
         return smap.aquarium_uid[key]
-    # use counter-based fake uuid to keep uniqueness without leaking source
     fake = _alloc_fake_uuid(len(smap.aquarium_uid) + 1)
     smap.aquarium_uid[key] = fake
     return fake
 
 
 def _rand_hex(n_bytes: int) -> str:
-    # Not crypto, just stable-ish uniqueness.
+    """Return a random lowercase hex string.
+
+    Args:
+        n_bytes: Number of random bytes to generate.
+
+    Returns:
+        Hex string of length ``2 * n_bytes``.
+    """
     return "".join(f"{random.randint(0, 255):02x}" for _ in range(n_bytes))
 
 
 def map_device_hwid(raw_hwid: str, smap: SanitizeMap) -> str:
-    # Only map values that look like real ReefBeat hwids (typically 12 hex chars).
-    # This avoids the sanitize map growing from unrelated payload fields that happen
-    # to be named "hwid".
+    """Map a device HWID to a stable sanitized HWID.
+
+    Args:
+        raw_hwid: Raw HWID string.
+        smap: Persistent mapping.
+
+    Returns:
+        Sanitized HWID (12 hex chars) or the constant sanitized placeholder if the
+        input does not look like a HWID.
+    """
+    # Only map real-looking HWIDs to prevent mapping growth.
     norm = raw_hwid.strip().lower()
     if not re.fullmatch(r"[0-9a-f]{12}", norm):
         return SANITIZED_HWID
@@ -454,12 +540,22 @@ def map_device_hwid(raw_hwid: str, smap: SanitizeMap) -> str:
     key = _hash_key("device_hwid", norm)
     if key in smap.device_hwid:
         return smap.device_hwid[key]
-    # ReefBeat hwid is typically 12 hex chars
     smap.device_hwid[key] = _rand_hex(6)
     return smap.device_hwid[key]
 
 
 def map_device_name(raw_name: str, smap: SanitizeMap) -> str:
+    """Map a raw device name to a stable sanitized device name.
+
+    Preserves the prefix when the input matches the standard format.
+
+    Args:
+        raw_name: Raw device name (e.g. ``RSATO+2487379135``).
+        smap: Persistent mapping.
+
+    Returns:
+        Sanitized device name (e.g. ``RSATO+0000000001``).
+    """
     # Idempotence: if the caller passes an already-sanitized name, do not re-map.
     if raw_name in smap.device_name.values():
         return raw_name
@@ -468,8 +564,7 @@ def map_device_name(raw_name: str, smap: SanitizeMap) -> str:
     if key in smap.device_name:
         return smap.device_name[key]
 
-    # Prefer preserving the device type prefix (e.g. RSATO+ / RSDOSE4-), and only
-    # replace the numeric suffix with a stable fake number of the same width.
+    # Preserve the device type prefix; replace only the numeric suffix.
     m = re.fullmatch(r"([A-Za-z0-9]+[+\-])(\d+)", raw_name)
     if m:
         prefix = m.group(1)
@@ -487,6 +582,14 @@ def map_device_name(raw_name: str, smap: SanitizeMap) -> str:
 
 
 def _rand_mac(prefix: str | None = None) -> str:
+    """Generate a random MAC address, optionally with a fixed prefix.
+
+    Args:
+        prefix: Optional MAC prefix like ``"02:00:00"``.
+
+    Returns:
+        Uppercase MAC address string.
+    """
     parts: list[str] = []
     if prefix:
         parts.extend(prefix.split(":"))
@@ -496,6 +599,15 @@ def _rand_mac(prefix: str | None = None) -> str:
 
 
 def map_mac(raw_mac: str, smap: SanitizeMap) -> str:
+    """Map a raw MAC to a stable sanitized MAC.
+
+    Args:
+        raw_mac: Raw MAC address.
+        smap: Persistent mapping.
+
+    Returns:
+        Sanitized MAC address.
+    """
     # Idempotence: if we already produced this value, don't re-map it.
     norm = raw_mac.strip().upper()
     if norm in (v.upper() for v in smap.mac.values()):
@@ -509,6 +621,15 @@ def map_mac(raw_mac: str, smap: SanitizeMap) -> str:
 
 
 def map_bssid(raw_bssid: str, smap: SanitizeMap) -> str:
+    """Map a raw BSSID to a stable sanitized BSSID.
+
+    Args:
+        raw_bssid: Raw BSSID.
+        smap: Persistent mapping.
+
+    Returns:
+        Sanitized BSSID.
+    """
     # Idempotence: if we already produced this value, don't re-map it.
     norm = raw_bssid.strip().upper()
     if norm in (v.upper() for v in smap.bssid.values()):
@@ -522,6 +643,15 @@ def map_bssid(raw_bssid: str, smap: SanitizeMap) -> str:
 
 
 def map_ip_address(raw_ip: str, smap: SanitizeMap) -> str:
+    """Map a raw IP address to a stable sanitized IP (10.0.0.x).
+
+    Args:
+        raw_ip: Raw IPv4 address string.
+        smap: Persistent mapping.
+
+    Returns:
+        Sanitized IPv4 address string.
+    """
     # If the caller accidentally passes an already-sanitized IP (e.g. from a prior run),
     # keep mapping idempotent and avoid polluting the sanitize map with synthetic values.
     norm = raw_ip.strip()
@@ -537,39 +667,63 @@ def map_ip_address(raw_ip: str, smap: SanitizeMap) -> str:
         return smap.ip_address[key]
     host = smap.next_ip_host
     smap.next_ip_host += 1
-    # Keep it in RFC1918-ish 10.0.0.0/24
     smap.ip_address[key] = f"10.0.0.{host}"
     return smap.ip_address[key]
 
 
 def map_ssid(raw_ssid: str, smap: SanitizeMap) -> str:
-    # Collapse all SSIDs to a single sanitized value.
-    # WiFi scan endpoints can include many nearby SSIDs; keeping them distinct
-    # unnecessarily grows the mapping file.
+    """Return the constant sanitized SSID.
+
+    WiFi scan payloads may include many nearby SSIDs; we intentionally do not preserve
+    uniqueness to avoid growing the mapping file.
+
+    Args:
+        raw_ssid: Raw SSID (ignored).
+        smap: Persistent mapping (unused).
+
+    Returns:
+        Constant sanitized SSID.
+    """
     _ = raw_ssid
     __ = smap
     return SANITIZED_SSID
 
 
 def stable_device_uuid(raw_hwid: str) -> str:
-    """Return a deterministic UUID derived from a (hashed) device id."""
+    """Return a deterministic UUID derived from a device identifier.
+
+    Args:
+        raw_hwid: Device identifier used as the seed.
+
+    Returns:
+        Deterministic UUID string.
+    """
     h = hashlib.sha256()
     h.update(b"device_uuid\x00")
     h.update(raw_hwid.lower().encode("utf-8", errors="replace"))
     b = bytearray(h.digest()[:16])
-    # Set RFC4122 variant + a stable UUID version nibble.
+    # Set RFC4122 variant and a stable UUID version nibble.
     b[6] = (b[6] & 0x0F) | 0x40
     b[8] = (b[8] & 0x3F) | 0x80
     return str(uuid.UUID(bytes=bytes(b)))
 
 
 def map_serial_code(raw_code: str, smap: SanitizeMap) -> str:
+    """Map a raw serial code to a stable sanitized serial-like value.
+
+    Args:
+        raw_code: Raw serial code.
+        smap: Persistent mapping.
+
+    Returns:
+        Sanitized serial code.
+    """
     key = _hash_key("serial_code", raw_code)
     if key in smap.serial_code:
         return smap.serial_code[key]
-    # preserve the 'cf' prefix pattern if present
+    # Preserve the 'cf' prefix pattern if present.
     prefix = "cf" if raw_code.lower().startswith("cf") else "sc"
-    smap.serial_code[key] = f"{prefix}{_rand_hex(7)}"  # 2 + 14 = 16 chars
+    smap.serial_code[key] = f"{prefix}{_rand_hex(7)}"
     return smap.serial_code[key]
 
 
@@ -590,7 +744,14 @@ class DeviceIdentity:
 
 
 def load_dotenv_simple(dotenv_path: Path) -> dict[str, str]:
-    """Minimal .env parser (no external dependency)."""
+    """Load a simple `.env` file.
+
+    Args:
+        dotenv_path: Path to the `.env` file.
+
+    Returns:
+        Mapping of keys to values. Missing files return an empty dict.
+    """
     if not dotenv_path.exists():
         return {}
 
@@ -613,21 +774,32 @@ def load_dotenv_simple(dotenv_path: Path) -> dict[str, str]:
 # Helpers: scan (LAN + optional cloud)
 # =============================================================================
 
-# TODO scan code starts here
-
 
 def _as_str(val: Any) -> str:
+    """Convert an arbitrary value into a printable string.
+
+    Args:
+        val: Any value.
+
+    Returns:
+        Empty string for ``None``, otherwise a string representation.
+    """
     if val is None:
         return ""
     return val if isinstance(val, str) else str(val)
 
 
 def print_devices_table(rows: list[dict[str, Any]]) -> None:
-    """Print a human-readable table of devices.
+    """Print a human-readable device table.
 
-    Supports both:
-    - cloud-style dicts (aquarium_name, name, type, ip_address, model, firmware_version)
-    - lan-scan dicts (aquarium, device, type, ip, model, fw)
+    Supports both cloud-style rows (``aquarium_name``, ``ip_address``, etc.) and LAN
+    scan rows (``aquarium``, ``ip``, etc.).
+
+    Args:
+        rows: List of row dictionaries.
+
+    Returns:
+        None
     """
     table: list[tuple[str, str, str, str, str, str, str]] = []
     for r in rows:
@@ -664,7 +836,16 @@ def print_devices_table(rows: list[dict[str, Any]]) -> None:
 
 
 def cloud_list_devices(username: str, password: str, *, timeout_s: int) -> list[dict[str, Any]]:
-    """Fast device listing using the ReefBeat cloud (like cli_v3 list)."""
+    """List devices from the ReefBeat cloud.
+
+    Args:
+        username: Cloud username.
+        password: Cloud password.
+        timeout_s: HTTP timeout seconds.
+
+    Returns:
+        List of cloud device dicts, each enriched with an aquarium name when possible.
+    """
     token = cloud_auth_token(username, password, timeout=timeout_s)
     if not token:
         return []
@@ -698,23 +879,15 @@ def cloud_list_devices(username: str, password: str, *, timeout_s: int) -> list[
     return out
 
 
-def probe_http_status(ip: str, url: str, timeout: float) -> int:
-    """Return HTTP status code for a GET, or 0 on connect errors."""
-    full = f"http://{ip}{url}"
-    req = Request(url=full, method="GET")
-    try:
-        with urlopen(req, timeout=timeout) as resp:
-            return int(getattr(resp, "status", 200))
-    except HTTPError as e:
-        try:
-            return int(getattr(e, "code", 0) or 0)
-        except Exception:
-            return 0
-    except URLError:
-        return 0
-
-
 def _safe_json_loads(raw: bytes) -> Any:
+    """Parse JSON bytes safely.
+
+    Args:
+        raw: Raw bytes from an HTTP response.
+
+    Returns:
+        Parsed JSON value, or ``None`` if parsing fails.
+    """
     try:
         return json.loads(raw.decode("utf-8", errors="replace"))
     except Exception:
@@ -722,6 +895,14 @@ def _safe_json_loads(raw: bytes) -> Any:
 
 
 def _normalize_fw(val: Any) -> str:
+    """Normalize a firmware version field to a string.
+
+    Args:
+        val: Raw firmware version value.
+
+    Returns:
+        Firmware version string.
+    """
     if isinstance(val, str):
         return val
     if val is None:
@@ -737,14 +918,26 @@ def scan_network_for_devices(
     max_hosts: int = 4096,
     allow_large: bool = False,
 ) -> list[dict[str, str]]:
-    """Scan a CIDR and return a list of detected ReefBeat devices.
+    """Scan a CIDR and return detected ReefBeat devices.
 
-    Detection strategy:
-    - GET /device-info and parse JSON
+    This probes ``/device-info`` on each host in the CIDR.
+
+    Args:
+        cidr: CIDR string to scan.
+        timeout_s: Per-host HTTP timeout.
+        workers: Thread pool size.
+        max_hosts: Refuse scanning networks larger than this many hosts unless overridden.
+        allow_large: If True, allow scanning very large networks.
+
+    Returns:
+        List of device rows, one per detected host.
+
+    Raises:
+        ValueError: If the CIDR is larger than ``max_hosts`` and ``allow_large`` is False.
     """
 
     net = ipaddress.ip_network(cidr, strict=False)
-    # guard against accidental huge scans (docker /16, etc.)
+    # Guard against accidentally scanning huge networks (docker /16, etc.).
     host_count = int(max(0, net.num_addresses - 2)) if getattr(net, "version", 4) == 4 else int(net.num_addresses)
     if host_count > max_hosts and not allow_large:
         raise ValueError(
@@ -756,7 +949,6 @@ def scan_network_for_devices(
 
     def probe_one(ip: str) -> dict[str, str] | None:
         try:
-            # /device-info is the canonical endpoint on these devices
             raw = fetch_url_http(ip, "/device-info", timeout=timeout_s)
             if not raw:
                 return None
@@ -772,7 +964,6 @@ def scan_network_for_devices(
             fw = payload.get("firmware_version")
             dtype = payload.get("type")
 
-            # weak but practical signature
             if not isinstance(name, str) or not name:
                 return None
             if not isinstance(hwid, str) or not hwid:
@@ -789,7 +980,6 @@ def scan_network_for_devices(
                 "hwid": hwid,
             }
         except Exception:
-            # Never let a single host's bad behavior abort the scan.
             return None
 
     found: list[dict[str, str]] = []
@@ -808,6 +998,18 @@ def scan_network_for_devices_multi(
     max_hosts: int,
     allow_large: bool,
 ) -> list[dict[str, str]]:
+    """Scan multiple CIDRs and return a de-duplicated device list.
+
+    Args:
+        cidrs: List of CIDRs to scan.
+        timeout_s: Per-request timeout.
+        workers: Thread pool size used for each CIDR.
+        max_hosts: Refuse scanning CIDRs larger than this, unless overridden.
+        allow_large: Allow scanning very large CIDRs.
+
+    Returns:
+        A list of device rows (one per unique IP).
+    """
     by_ip: dict[str, dict[str, str]] = {}
     for cidr in cidrs:
         found = scan_network_for_devices(
@@ -825,6 +1027,11 @@ def scan_network_for_devices_multi(
 
 
 def build_scan_parser() -> argparse.ArgumentParser:
+    """Build an argument parser for the `scan` subcommand.
+
+    Returns:
+        Configured argument parser.
+    """
     p = argparse.ArgumentParser(
         prog="run.py scan",
         description=(
@@ -877,13 +1084,20 @@ def build_scan_parser() -> argparse.ArgumentParser:
 
 
 def cmd_scan(argv: list[str]) -> int:
+    """Entry point for `python run.py scan ...`.
+
+    Args:
+        argv: Argument list excluding the leading `scan` token.
+
+    Returns:
+        Process-style exit code (0 success, non-zero on user/IO errors).
+    """
     p = build_scan_parser()
     args = p.parse_args(argv)
 
     cidrs = list(args.cidr or [])
     creds = None if args.no_cloud else resolve_cloud_creds(args.username, args.password, Path(".env"))
 
-    # No CIDR => use cloud listing (fast), but requires creds
     if not cidrs:
         if not creds:
             logger.info("Provide --cidr for LAN scan, or set cloud creds in .env / --username/--password")
@@ -893,7 +1107,6 @@ def cmd_scan(argv: list[str]) -> int:
         print_devices_table(devices)
         return 0
 
-    # CIDR provided => LAN scan
     logger.info(f"LAN scanning {', '.join(cidrs)}...")
     try:
         rows = scan_network_for_devices_multi(
@@ -922,7 +1135,17 @@ def enrich_devices_from_cloud(
     password: str,
     timeout_s: int,
 ) -> None:
-    """Mutate scanned devices in-place with aquarium/type/name/model/fw from cloud when possible."""
+    """Enrich scanned device rows with cloud metadata.
+
+    Args:
+        devices: Device rows to mutate in-place.
+        username: Cloud username.
+        password: Cloud password.
+        timeout_s: HTTP timeout seconds.
+
+    Returns:
+        None
+    """
     token = cloud_auth_token(username, password, timeout=timeout_s)
     if not token:
         return
@@ -959,8 +1182,6 @@ def enrich_devices_from_cloud(
             continue
 
         row["_source"] = "LAN+CLOUD"
-
-        # Prefer cloud-provided fields
         name = cloud.get("name")
         dtype = cloud.get("type")
         model = cloud.get("model")
@@ -985,7 +1206,15 @@ def enrich_devices_from_cloud(
 
 
 def format_xml_bytes(data: bytes) -> bytes:
-    """Pretty-format XML bytes. If parsing fails, return original bytes."""
+    """Pretty-format XML bytes.
+
+    Args:
+        data: Raw XML bytes.
+
+    Returns:
+        Pretty-formatted XML bytes (ending with a newline). If parsing fails, returns
+        the original bytes.
+    """
     try:
         text = data.decode("utf-8", errors="replace")
         dom = minidom.parseString(text)
@@ -999,7 +1228,16 @@ def format_xml_bytes(data: bytes) -> bytes:
 
 
 def ping_host(ip: str, timeout_seconds: int = 2) -> bool:
-    """Return True if host responds to a single ping."""
+    """Check whether a host responds to a ping.
+
+    Args:
+        ip: Target host IP.
+        timeout_seconds: Ping timeout in seconds.
+
+    Returns:
+        True if the host responds, otherwise False. If `ping` is unavailable, returns
+        True as a best-effort fallback.
+    """
     try:
         res = subprocess.run(
             ["ping", "-c", "1", "-W", str(timeout_seconds), ip],
@@ -1009,11 +1247,25 @@ def ping_host(ip: str, timeout_seconds: int = 2) -> bool:
         )
         return res.returncode == 0
     except FileNotFoundError:
-        # ping not available; best-effort fallback
         return True
 
 
 def iter_urls(device_type: str) -> list[str]:
+    """Return the endpoint list to snapshot for a device type.
+
+    Prefers reading endpoints from an existing fixture tree (so snapshots are
+    config-driven), and falls back to built-in endpoint lists.
+
+    Args:
+        device_type: Device type token (e.g. ``ATO``).
+
+    Returns:
+        List of endpoint paths.
+
+    Raises:
+        ValueError: If ``device_type`` is not supported and no fixture tree exists to
+            derive endpoints from.
+    """
     fixture_urls = _iter_urls_from_fixture_tree(Path("devices") / device_type)
     if fixture_urls:
         return fixture_urls
@@ -1024,14 +1276,32 @@ def iter_urls(device_type: str) -> list[str]:
 
 
 def dest_dir_for_url(url: str, root: Path) -> Path:
-    """Match simulator tree: '/' -> root, else root/<path-without-leading-slash>."""
+    """Convert an endpoint path into its fixture directory.
+
+    Args:
+        url: Endpoint path (e.g. ``/wifi``). The root endpoint ``/`` maps to
+            ``root`` directly.
+        root: Base directory for the fixture tree.
+
+    Returns:
+        Directory path where this endpoint's fixture should be written.
+    """
     if url == "/":
         return root
     return root / url.lstrip("/")
 
 
 def fetch_url_http(ip: str, url: str, timeout: float) -> bytes:
-    """Fetch local device HTTP endpoint and return bytes; errors => empty bytes."""
+    """Fetch a local device endpoint and return raw bytes.
+
+    Args:
+        ip: Device IP address.
+        url: Endpoint path (e.g. ``/device-info``).
+        timeout: Socket timeout in seconds.
+
+    Returns:
+        Response bytes, or ``b""`` on any connection/HTTP error.
+    """
     full = f"http://{ip}{url}"
     try:
         with urlopen(full, timeout=timeout) as resp:
@@ -1041,7 +1311,21 @@ def fetch_url_http(ip: str, url: str, timeout: float) -> bytes:
 
 
 def detect_device_type(ip: str, *, timeout: int) -> str:
-    """Detect fixture device type from the device's /device-info endpoint."""
+    """Detect fixture device type from the device's ``/device-info`` endpoint.
+
+    The devices expose both a hardware type (``hw_type``) and a model
+    (``hw_model``). We map those into our fixture folder names.
+
+    Args:
+        ip: Device IP address.
+        timeout: HTTP timeout in seconds.
+
+    Returns:
+        Fixture type string (e.g. ``ATO``, ``DOSE4``, ``LED``).
+
+    Raises:
+        RuntimeError: If the device-info payload is missing/invalid or cannot be mapped.
+    """
     raw = fetch_url_http(ip, "/device-info", timeout=timeout)
     payload_any = _safe_json_loads(raw)
     if not isinstance(payload_any, dict):
@@ -1054,7 +1338,6 @@ def detect_device_type(ip: str, *, timeout: int) -> str:
     hw_type_s = hw_type.strip().lower() if isinstance(hw_type, str) else ""
     hw_model_s = hw_model.strip().upper() if isinstance(hw_model, str) else ""
 
-    # Primary mapping from hw_type (e.g. reef-ato -> ATO)
     if hw_type_s == "reef-ato":
         return "ATO"
     if hw_type_s == "reef-lights":
@@ -1066,7 +1349,6 @@ def detect_device_type(ip: str, *, timeout: int) -> str:
     if hw_type_s == "reef-mat":
         return "MAT"
 
-    # reef-dosing needs model-based disambiguation
     if hw_type_s == "reef-dosing":
         if "DOSE2" in hw_model_s:
             return "DOSE2"
@@ -1074,7 +1356,6 @@ def detect_device_type(ip: str, *, timeout: int) -> str:
             return "DOSE4"
         return "DOSE4"
 
-    # Fallback if hw_type is missing
     if "DOSE2" in hw_model_s:
         return "DOSE2"
     if "DOSE4" in hw_model_s:
@@ -1094,7 +1375,15 @@ def detect_device_type(ip: str, *, timeout: int) -> str:
 
 
 def format_json_bytes(data: bytes) -> bytes:
-    """Pretty-format JSON bytes; return original bytes if not JSON."""
+    """Pretty-format JSON bytes.
+
+    Args:
+        data: Raw bytes (usually an HTTP response body).
+
+    Returns:
+        Pretty-printed JSON bytes ending with a newline, or the original bytes if
+        the payload is not valid UTF-8 JSON.
+    """
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
@@ -1109,7 +1398,17 @@ def format_json_bytes(data: bytes) -> bytes:
 
 
 def _iter_urls_from_fixture_tree(type_root: Path) -> list[str]:
-    """Derive endpoint URLs from an existing devices/<TYPE> fixture tree."""
+    """Derive endpoint URLs from an existing ``devices/<TYPE>`` fixture tree.
+
+    This lets local snapshots follow the endpoints already captured on disk.
+    Hidden directories (e.g. ``.raw``) are ignored.
+
+    Args:
+        type_root: Directory like ``devices/ATO``.
+
+    Returns:
+        A stable, de-duplicated list of endpoint paths.
+    """
     urls: list[str] = []
     if not type_root.exists() or not type_root.is_dir():
         return urls
@@ -1125,13 +1424,19 @@ def _iter_urls_from_fixture_tree(type_root: Path) -> list[str]:
         else:
             urls.append("/" + "/".join(rel_dir.parts))
 
-    # stable + human-friendly ordering
     urls = sorted(set(urls), key=lambda u: (u.count("/"), u))
     return urls
 
 
 def _device_types_from_config(config_path: Path) -> list[str]:
-    """Best-effort parse of config.json to discover device fixture folders."""
+    """Best-effort parse of ``config.json`` to discover device fixture folders.
+
+    Args:
+        config_path: Path to ``config.json``.
+
+    Returns:
+        Sorted list of device type folder names referenced by the config.
+    """
     try:
         obj_any: Any = json.loads(config_path.read_text(encoding="utf-8"))
     except Exception:
@@ -1154,13 +1459,22 @@ def _device_types_from_config(config_path: Path) -> list[str]:
 
 
 def available_device_types() -> list[str]:
+    """Return known device fixture types.
+
+    Sources:
+        - Hardcoded type map (supported endpoint sets)
+        - Existing fixture directories under ``devices/``
+        - Best-effort parse of ``config.json``
+
+    Returns:
+        Sorted list of type names (e.g. ``["ATO", "DOSE4", ...]``).
+    """
     out: set[str] = set(TYPE_MAP.keys())
     devices_dir = Path("devices")
     if devices_dir.exists() and devices_dir.is_dir():
         for child in devices_dir.iterdir():
             if not child.is_dir() or child.name.startswith("."):
                 continue
-            # Only treat directories that look like local-device fixtures as device types.
             if (child / "device-info" / "data").exists():
                 out.add(child.name)
     out.update(_device_types_from_config(Path("config.json")))
@@ -1168,8 +1482,16 @@ def available_device_types() -> list[str]:
 
 
 def sanitize_local_payload(url: str, payload: JsonValue, smap: SanitizeMap) -> JsonValue:
-    """Sanitize local-device payloads using the same mapping strategy as cloud."""
-    # Device name is often a serial-like value; sanitize it when it looks like a device identity.
+    """Sanitize a local-device JSON payload.
+
+    Args:
+        url: Endpoint path used to apply endpoint-specific rules.
+        payload: Parsed JSON payload.
+        smap: Persistent mapping used for stable anonymization.
+
+    Returns:
+        Sanitized JSON payload.
+    """
     if url == "/device-info" and isinstance(payload, dict):
         name_val = payload.get("name")
         if isinstance(name_val, str) and name_val:
@@ -1186,11 +1508,22 @@ def rewrite_local_download(
     smap: SanitizeMap | None = None,
     device_hwid: str | None = None,
 ) -> bytes:
-    """Rewrite a local download so it is safe + stable in fixtures.
+    """Rewrite a local endpoint response into a stable fixture payload.
 
-    - Replaces real IP with a stable sanitized IP for text payloads
-    - Pretty-formats JSON (and sanitizes with smap when provided)
-    - Rewrites UUID in description.xml deterministically and pretty-formats XML
+    This performs a few stability/sanitization steps:
+    - Replaces the real IP with the mapped IP in text payloads.
+    - Pretty-formats JSON and applies sanitization rules when a map is provided.
+    - Rewrites the UUID in ``/description.xml`` deterministically and pretty-formats XML.
+
+    Args:
+        data: Raw response bytes.
+        ip: Device IP address.
+        url: Endpoint path.
+        smap: Optional sanitize map for stable anonymization.
+        device_hwid: Optional HWID used to derive deterministic XML UUIDs.
+
+    Returns:
+        Rewritten bytes suitable for writing to the fixture tree.
     """
     if not data:
         return data
@@ -1214,7 +1547,6 @@ def rewrite_local_download(
 
         return format_xml_bytes(text.encode("utf-8"))
 
-    # Try JSON pretty/sanitize. If not JSON, return as UTF-8 text.
     try:
         obj_any: Any = json.loads(text)
     except Exception:
@@ -1227,43 +1559,30 @@ def rewrite_local_download(
     return (json.dumps(json_payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
-def read_identity(root: Path) -> DeviceIdentity:
-    """Extract hwid and name from device-info/data (JSON)."""
-    p = root / "device-info" / "data"
-    raw = p.read_text(encoding="utf-8")
-    try:
-        obj_any: Any = json.loads(raw)
-    except json.JSONDecodeError:
-        hwid_m = re.search(r'"hwid"\s*:\s*"([0-9a-fA-F]+)"', raw)
-        name_m = re.search(r'"name"\s*:\s*"([^"]+)"', raw)
-        if not hwid_m or not name_m:
-            raise RuntimeError("Could not parse hwid/name from device-info/data")
-        return DeviceIdentity(hwid=hwid_m.group(1).lower(), name=name_m.group(1))
-
-    if not isinstance(obj_any, dict):
-        raise RuntimeError("device-info/data JSON is not an object")
-
-    obj = cast(dict[str, Any], obj_any)
-    hwid_val = obj.get("hwid")
-    name_val = obj.get("name")
-    hwid = str(hwid_val).lower() if isinstance(hwid_val, str) else ""
-    name = str(name_val) if isinstance(name_val, str) else ""
-
-    if not hwid or not name:
-        raise RuntimeError("device-info/data missing hwid or name")
-    return DeviceIdentity(hwid=hwid, name=name)
-
-
 def snapshot_local_device(ip: str, device_type: str, out_root: Path, timeout: int, *, save_raw: bool = False) -> None:
+    """Snapshot a local device to a fixture tree.
+
+    Args:
+        ip: Device IP address.
+        device_type: Device type token (e.g. ``ATO``).
+        out_root: Output directory root (e.g. ``devices/ATO``).
+        timeout: HTTP timeout in seconds.
+        save_raw: If True, also write raw payloads under ``<out_root>/.raw``.
+
+    Returns:
+        None
+
+    Raises:
+        RuntimeError: If the host is not reachable.
+    """
     if not ping_host(ip):
         raise RuntimeError(f"{ip} not alive")
 
     urls = iter_urls(device_type)
-    # Ensure we fetch /device-info first so we can derive deterministic IDs for XML, etc.
+    # Fetch /device-info first to derive deterministic IDs for XML, etc.
     if "/device-info" in urls:
         urls = ["/device-info", *[u for u in urls if u != "/device-info"]]
 
-    # Reuse the same local-only mapping file as cloud export for stable sanitization.
     map_path = Path(SANITIZE_MAP_FILENAME)
     smap = load_sanitize_map(map_path)
 
@@ -1288,7 +1607,6 @@ def snapshot_local_device(ip: str, device_type: str, out_root: Path, timeout: in
                 raw_bytes = format_json_bytes(raw_bytes)
             (raw_dest / "data").write_bytes(raw_bytes)
 
-        # Capture raw identity before sanitizing /device-info
         if url == "/device-info" and data and old_id is None:
             payload_any = _safe_json_loads(data)
             if isinstance(payload_any, dict):
@@ -1303,10 +1621,9 @@ def snapshot_local_device(ip: str, device_type: str, out_root: Path, timeout: in
         data_path = d / "data"
         data_path.write_bytes(data)
 
-        # remove empty endpoints (keeps tree tight, like your bash)
+        # Remove empty endpoints to keep the fixture tree tight.
         if data_path.stat().st_size == 0:
             if d != out_root:
-                # delete directory tree
                 for child in sorted(d.rglob("*"), reverse=True):
                     if child.is_file():
                         child.unlink(missing_ok=True)
@@ -1316,7 +1633,6 @@ def snapshot_local_device(ip: str, device_type: str, out_root: Path, timeout: in
             else:
                 data_path.unlink(missing_ok=True)
 
-    # Persist mapping after successful export.
     save_sanitize_map(map_path, smap)
 
 
@@ -1326,30 +1642,46 @@ def snapshot_local_device(ip: str, device_type: str, out_root: Path, timeout: in
 
 
 def _redact_string(value: str, *, allow_uuid: bool = True) -> str:
+    """Redact PII-like patterns inside a string.
+
+    Args:
+        value: Input string.
+        allow_uuid: If False, skip UUID redaction (used for linkage UUIDs that
+            must remain consistent across payloads).
+
+    Returns:
+        Redacted string.
+    """
     s = _EMAIL_RE.sub("user@example.com", value)
     s = _PHONE_RE.sub("+10000000000", s)
     if allow_uuid:
-        s = _UUID_RE.sub("uuid:00000000-0000-0000-0000-000000000000", s)  # your existing pattern
+        s = _UUID_RE.sub("uuid:00000000-0000-0000-0000-000000000000", s)
         s = _RAW_UUID_RE.sub("00000000-0000-0000-0000-000000000000", s)
     return s
 
 
 def _deep_redact(value: JsonValue, path: tuple[str, ...] = ()) -> JsonValue:
+    """Recursively redact strings in a JSON-like structure.
+
+    Args:
+        value: JSON-like input.
+        path: Key path used to enforce special-case invariants.
+
+    Returns:
+        Redacted JSON-like output.
+    """
     if isinstance(value, dict):
-        # recurse while preserving JSON types
         return {k: _deep_redact(v, path + (k,)) for k, v in value.items()}
     if isinstance(value, list):
-        # Lists don't add a stable key component to the path.
         return [_deep_redact(v, path) for v in value]
     if isinstance(value, str):
-        # Requirement: supplement uids must remain unchanged.
         redact_uuid = True
 
-        # Keep supplement.uid unchanged.
+        # Invariant: supplement.uid must remain unchanged.
         if len(path) >= 2 and path[-2] == "supplement" and path[-1] == "uid":
             redact_uuid = False
 
-        # Preserve mapped linkage UUIDs so relationships remain consistent across payloads.
+        # Invariant: preserve linkage UUIDs so relationships remain consistent.
         if path and path[-1] in {"uid", "user_uid", "aquarium_uid"}:
             redact_uuid = False
 
@@ -1358,7 +1690,15 @@ def _deep_redact(value: JsonValue, path: tuple[str, ...] = ()) -> JsonValue:
 
 
 def _deep_key_sanitize(value: JsonValue, smap: SanitizeMap) -> JsonValue:
-    """Key-aware sanitization for known PII fields across arbitrary payload shapes."""
+    """Key-aware sanitization for known fields across arbitrary payloads.
+
+    Args:
+        value: JSON-like input.
+        smap: Persistent mapping used for stable anonymization.
+
+    Returns:
+        Sanitized JSON-like output.
+    """
     if isinstance(value, list):
         return [_deep_key_sanitize(v, smap) for v in value]
     if isinstance(value, dict):
@@ -1407,7 +1747,15 @@ def _deep_key_sanitize(value: JsonValue, smap: SanitizeMap) -> JsonValue:
 
 
 def _sanitize_cloud_aquarium(payload: JsonValue, smap: SanitizeMap) -> JsonValue:
-    """Sanitize /aquarium payload while preserving internal relationships."""
+    """Sanitize a `/aquarium` payload while preserving internal relationships.
+
+    Args:
+        payload: Raw parsed payload.
+        smap: Persistent mapping.
+
+    Returns:
+        Sanitized payload.
+    """
     if isinstance(payload, list):
         out_list: JsonArray = []
         for item in payload:
@@ -1431,10 +1779,8 @@ def _sanitize_cloud_aquarium(payload: JsonValue, smap: SanitizeMap) -> JsonValue
                 obj["user_uid"] = map_user_uid(raw_user_uid, smap)
             else:
                 obj["user_uid"] = cast(str, SANITIZED_USER["uid"])
-            # Keep names unique but non-identifying.
             obj["name"] = f"{SANITIZED_AQUARIUM_NAME} {max(1, int(mapped_id) - (SANITIZED_AQUARIUM_ID - 1))}"
             obj["system_model"] = SANITIZED_SYSTEM_MODEL
-            # scrub any remaining embedded PII
             out_list.append(_deep_key_sanitize(_deep_redact(obj), smap))
         return out_list
 
@@ -1465,7 +1811,15 @@ def _sanitize_cloud_aquarium(payload: JsonValue, smap: SanitizeMap) -> JsonValue
 
 
 def _sanitize_cloud_device(payload: JsonValue, smap: SanitizeMap) -> JsonValue:
-    """Sanitize /device payload while preserving aquarium linkage and removing PII."""
+    """Sanitize a `/device` payload while preserving aquarium linkage.
+
+    Args:
+        payload: Raw parsed payload.
+        smap: Persistent mapping.
+
+    Returns:
+        Sanitized payload.
+    """
     if isinstance(payload, list):
         out_list2: JsonArray = []
         for item in payload:
@@ -1486,8 +1840,6 @@ def _sanitize_cloud_device(payload: JsonValue, smap: SanitizeMap) -> JsonValue:
                 obj["aquarium_uid"] = map_aquarium_uid(raw_aq_uid, smap)
             else:
                 obj["aquarium_uid"] = SANITIZED_AQUARIUM_UID
-
-            # common identifiers (unique + stable)
             bssid = obj_in.get("bssid")
             hwid = obj_in.get("hwid")
             ip_addr = obj_in.get("ip_address")
@@ -1501,7 +1853,6 @@ def _sanitize_cloud_device(payload: JsonValue, smap: SanitizeMap) -> JsonValue:
             )
             obj["mac"] = map_mac(mac, smap) if isinstance(mac, str) and mac else SANITIZED_MAC
             obj["ssid"] = map_ssid(ssid, smap) if isinstance(ssid, str) and ssid else SANITIZED_SSID
-            # scrub any remaining embedded PII (incl nested serial_code)
             out_list2.append(_deep_key_sanitize(_deep_redact(obj), smap))
         return out_list2
 
@@ -1542,7 +1893,16 @@ def _sanitize_cloud_device(payload: JsonValue, smap: SanitizeMap) -> JsonValue:
 
 
 def sanitize_cloud_payload(path: str, payload: JsonValue, smap: SanitizeMap) -> JsonValue:
-    # safest: for /user, replace entirely (prevents “new field leaked” surprises)
+    """Sanitize a cloud payload.
+
+    Args:
+        path: Cloud endpoint path (e.g. ``/device``).
+        payload: Parsed JSON payload.
+        smap: Persistent mapping used for stable anonymization.
+
+    Returns:
+        Sanitized payload.
+    """
     if path == "/user":
         out = dict(SANITIZED_USER)
         if isinstance(payload, dict):
@@ -1557,7 +1917,6 @@ def sanitize_cloud_payload(path: str, payload: JsonValue, smap: SanitizeMap) -> 
     if path == "/device":
         return _sanitize_cloud_device(payload, smap)
 
-    # otherwise, scrub strings everywhere (cheap insurance)
     return _deep_key_sanitize(_deep_redact(payload), smap)
 
 
@@ -1574,6 +1933,19 @@ def http_request(
     body: bytes | None = None,
     timeout: int = HTTP_TIMEOUT_SECS_DEFAULT,
 ) -> tuple[int, bytes]:
+    """Perform an HTTP request with urllib.
+
+    Args:
+        method: HTTP method (e.g. ``GET``).
+        url: Absolute URL.
+        headers: Optional request headers.
+        body: Optional request body.
+        timeout: Socket timeout seconds.
+
+    Returns:
+        Tuple of ``(status_code, response_bytes)``. On connection errors, returns
+        ``(0, b"")``.
+    """
     req = Request(url=url, method=method.upper(), data=body)
     if headers:
         for k, v in headers.items():
@@ -1591,6 +1963,16 @@ def http_request(
 
 
 def cloud_auth_token(username: str, password: str, timeout: int) -> str | None:
+    """Authenticate to the ReefBeat cloud and return an access token.
+
+    Args:
+        username: Cloud username.
+        password: Cloud password.
+        timeout: HTTP timeout seconds.
+
+    Returns:
+        Access token string, or ``None`` on auth/error.
+    """
     url = f"https://{CLOUD_SERVER_ADDR}/oauth/token"
 
     headers = {
@@ -1625,6 +2007,16 @@ def cloud_auth_token(username: str, password: str, timeout: int) -> str | None:
 
 
 def cloud_get_json(path: str, token: str, timeout: int) -> Any:
+    """GET a cloud endpoint and parse JSON.
+
+    Args:
+        path: Cloud API path (e.g. ``/device``).
+        token: Bearer token.
+        timeout: HTTP timeout seconds.
+
+    Returns:
+        Parsed JSON, or an empty dict on errors.
+    """
     url = f"https://{CLOUD_SERVER_ADDR}{path}"
     headers = {
         "Authorization": f"Bearer {token}",
@@ -1641,6 +2033,16 @@ def cloud_get_json(path: str, token: str, timeout: int) -> Any:
 
 
 def cloud_get_raw(path: str, token: str, timeout: int) -> tuple[int, bytes]:
+    """GET a cloud endpoint and return raw bytes.
+
+    Args:
+        path: Cloud API path.
+        token: Bearer token.
+        timeout: HTTP timeout seconds.
+
+    Returns:
+        ``(status_code, response_bytes)``.
+    """
     url = f"https://{CLOUD_SERVER_ADDR}{path}"
     headers = {
         "Authorization": f"Bearer {token}",
@@ -1654,7 +2056,16 @@ def resolve_cloud_creds(
     cli_password: str | None,
     dotenv_path: Path,
 ) -> tuple[str, str] | None:
-    # CLI overrides .env
+    """Resolve cloud credentials from CLI args or a `.env` file.
+
+    Args:
+        cli_username: Username passed via CLI.
+        cli_password: Password passed via CLI.
+        dotenv_path: Path to a `.env` file.
+
+    Returns:
+        ``(username, password)`` if found, otherwise ``None``.
+    """
     if cli_username and cli_password:
         return cli_username, cli_password
 
@@ -1667,6 +2078,18 @@ def resolve_cloud_creds(
 
 
 def snapshot_cloud(out_root: Path, timeout: int, username: str, password: str, *, save_raw: bool = False) -> bool:
+    """Export cloud endpoints into a fixture tree.
+
+    Args:
+        out_root: Output directory (e.g. ``devices/CLOUD``).
+        timeout: HTTP timeout seconds.
+        username: Cloud username.
+        password: Cloud password.
+        save_raw: If True, also write raw payloads under ``<out_root>/.raw``.
+
+    Returns:
+        True on success, False if authentication fails.
+    """
     logger.info("Authenticating to ReefBeat cloud...")
     token = cloud_auth_token(username, password, timeout=timeout)
     if not token:
@@ -1675,7 +2098,6 @@ def snapshot_cloud(out_root: Path, timeout: int, username: str, password: str, *
 
     out_root.mkdir(parents=True, exist_ok=True)
 
-    # Local-only mapping file (gitignore). Keeps sanitized IDs stable/unique.
     map_path = Path(SANITIZE_MAP_FILENAME)
     smap = load_sanitize_map(map_path)
 
@@ -1708,7 +2130,6 @@ def snapshot_cloud(out_root: Path, timeout: int, username: str, password: str, *
             encoding="utf-8",
         )
 
-    # Persist mapping after successful export.
     save_sanitize_map(map_path, smap)
 
     meta: dict[str, Any] = {"exported_at": int(time.time()), "server": CLOUD_SERVER_ADDR, "endpoints": CLOUD_URLS}
@@ -1717,6 +2138,19 @@ def snapshot_cloud(out_root: Path, timeout: int, username: str, password: str, *
 
 
 def infer_out_dir(out_root: Path, device_type: str | None, cloud: bool) -> Path:
+    """Infer the output directory based on CLI flags.
+
+    Args:
+        out_root: Base output directory.
+        device_type: Device type for local snapshots.
+        cloud: Whether this is a cloud export.
+
+    Returns:
+        Output directory path.
+
+    Raises:
+        ValueError: If `cloud` is False and `device_type` is not provided.
+    """
     if cloud:
         return out_root / "CLOUD"
     if not device_type:
@@ -1730,7 +2164,11 @@ def infer_out_dir(out_root: Path, device_type: str | None, cloud: bool) -> Path:
 
 
 def main() -> int:
-    # Special entrypoint: `python run.py scan ...`
+    """CLI entry point.
+
+    Returns:
+        Process-style exit code.
+    """
     if len(sys.argv) > 1 and sys.argv[1] == "scan":
         return cmd_scan(sys.argv[2:])
 
@@ -1760,7 +2198,6 @@ def main() -> int:
 
     out_root = Path(args.out_root).resolve()
 
-    # Cloud only
     if args.cloud:
         out_dir = infer_out_dir(out_root, None, cloud=True)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -1779,7 +2216,6 @@ def main() -> int:
         )
         return 0
 
-    # Local requires IP; type can be auto-detected.
     if not args.ip:
         logger.info("Missing --ip (required unless --cloud).")
         return 2
