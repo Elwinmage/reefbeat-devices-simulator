@@ -7,6 +7,7 @@ import hashlib
 import ipaddress
 import json
 import logging
+import os
 import random
 import re
 import subprocess
@@ -15,7 +16,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final, Iterable, Mapping, Union, cast
+from typing import Any, Final, Mapping, Union, cast
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -88,6 +89,23 @@ BASE_URLS: Final[list[str]] = [
     "/wifi/scan",
 ]
 
+ATO_URLS: Final[list[str]] = [
+    "/",
+    "/cloud",
+    "/dashboard",
+    "/device-info",
+    "/firmware",
+    "/logging",
+    "/mode",
+    "/time",
+    "/wifi",
+    "/description.xml",
+    "/configuration",
+    "/water-level",
+    "/temperature",
+    "/temperature-log",
+]
+
 DOSE2_URLS: Final[list[str]] = [
     "/head/1/settings",
     "/head/2/settings",
@@ -152,6 +170,7 @@ WAVE_URLS: Final[list[str]] = [
 ]
 
 TYPE_MAP: Final[dict[str, list[str]]] = {
+    "ATO": ATO_URLS,
     "DOSE": DOSE4_URLS,  # alias
     "DOSE2": DOSE2_URLS,
     "DOSE4": DOSE4_URLS,
@@ -201,6 +220,8 @@ SANITIZED_BSSID: Final[str] = "66:55:44:33:22:11"
 SANITIZED_HWID: Final[str] = "000000000000"
 SANITIZED_SERIAL_CODE: Final[str] = "cf00000000000000"
 SANITIZED_SSID: Final[str] = "REDACTED_SSID"
+SANITIZED_GATEWAY: Final[str] = "10.0.0.1"
+SANITIZED_SECRET: Final[str] = "REDACTED_SECRET"
 
 # Aquarium naming can contain personal context; keep it generic
 SANITIZED_AQUARIUM_NAME: Final[str] = "Aquarium"
@@ -209,6 +230,17 @@ SANITIZED_SYSTEM_MODEL: Final[str] = "Aquarium System"
 # Hidden, local-only mapping used to keep sanitized IDs stable/unique across runs.
 # Add this filename to your .gitignore.
 SANITIZE_MAP_FILENAME: Final[str] = ".reefbeat_sanitize_map.json"
+
+# Debugging aid:
+# - When True, sanitize-map keys are SHA256 digests of raw values.
+# - When False (default), sanitize-map keys are the raw values themselves (easier to debug, contains PII).
+SANITIZE_MAP_USE_HASH_KEYS: Final[bool] = os.getenv("REEFBEAT_SANITIZE_MAP_USE_HASH_KEYS", "0") in {
+    "1",
+    "true",
+    "True",
+    "yes",
+    "YES",
+}
 
 # Already defined in your codebase; keep as-is:
 _UUID_RE: Final[re.Pattern[str]] = re.compile(r"uuid:[0-9a-zA-Z\-]+")
@@ -231,7 +263,8 @@ class SanitizeMap:
     """Persistent mapping for stable, unique sanitized identifiers.
 
     This file is intended to be gitignored. To avoid storing personal values
-    directly, map keys are SHA256 digests of the original values.
+    directly, map keys can be SHA256 digests of the original values.
+    (In the current debugging mode, keys are stored as raw values.)
     """
 
     # hashed-original -> sanitized
@@ -251,10 +284,17 @@ class SanitizeMap:
     next_ip_host: int
     next_ssid_suffix: int
     next_device_suffix: int
+    next_device_suffix_by_prefix: dict[str, int]
 
 
 def _hash_key(kind: str, raw: str) -> str:
-    """Return a stable, non-reversible key for a raw identifier."""
+    """Return a stable key for a raw identifier.
+
+    Default mode uses SHA256 digests (non-reversible).
+    Debug mode can store raw values for easier tracking.
+    """
+    if not SANITIZE_MAP_USE_HASH_KEYS:
+        return raw
     h = hashlib.sha256()
     h.update(kind.encode("utf-8"))
     h.update(b"\x00")
@@ -278,6 +318,7 @@ def _sanitize_map_default() -> SanitizeMap:
         next_ip_host=10,  # 10.0.0.<host>
         next_ssid_suffix=1,
         next_device_suffix=1,
+        next_device_suffix_by_prefix={},
     )
 
 
@@ -310,6 +351,15 @@ def load_sanitize_map(path: Path) -> SanitizeMap:
             return out2
         return {}
 
+    def _d_int_str_keys(val: Any) -> dict[str, int]:
+        if isinstance(val, dict):
+            out3: dict[str, int] = {}
+            for k, v in cast(dict[str, Any], val).items():
+                if isinstance(v, int):
+                    out3[k] = v
+            return out3
+        return {}
+
     return SanitizeMap(
         user_uid=_d_str(obj.get("user_uid")),
         aquarium_id=_d_int(obj.get("aquarium_id")),
@@ -325,6 +375,7 @@ def load_sanitize_map(path: Path) -> SanitizeMap:
         next_ip_host=int(obj.get("next_ip_host") or 10),
         next_ssid_suffix=int(obj.get("next_ssid_suffix") or 1),
         next_device_suffix=int(obj.get("next_device_suffix") or 1),
+        next_device_suffix_by_prefix=_d_int_str_keys(obj.get("next_device_suffix_by_prefix")),
     )
 
 
@@ -344,6 +395,7 @@ def save_sanitize_map(path: Path, smap: SanitizeMap) -> None:
         "next_ip_host": smap.next_ip_host,
         "next_ssid_suffix": smap.next_ssid_suffix,
         "next_device_suffix": smap.next_device_suffix,
+        "next_device_suffix_by_prefix": smap.next_device_suffix_by_prefix,
     }
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
@@ -388,7 +440,18 @@ def _rand_hex(n_bytes: int) -> str:
 
 
 def map_device_hwid(raw_hwid: str, smap: SanitizeMap) -> str:
-    key = _hash_key("device_hwid", raw_hwid.lower())
+    # Only map values that look like real ReefBeat hwids (typically 12 hex chars).
+    # This avoids the sanitize map growing from unrelated payload fields that happen
+    # to be named "hwid".
+    norm = raw_hwid.strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{12}", norm):
+        return SANITIZED_HWID
+
+    # Idempotence: if we already produced this value, don't re-map it.
+    if norm in (v.lower() for v in smap.device_hwid.values()):
+        return norm
+
+    key = _hash_key("device_hwid", norm)
     if key in smap.device_hwid:
         return smap.device_hwid[key]
     # ReefBeat hwid is typically 12 hex chars
@@ -397,12 +460,29 @@ def map_device_hwid(raw_hwid: str, smap: SanitizeMap) -> str:
 
 
 def map_device_name(raw_name: str, smap: SanitizeMap) -> str:
+    # Idempotence: if the caller passes an already-sanitized name, do not re-map.
+    if raw_name in smap.device_name.values():
+        return raw_name
+
     key = _hash_key("device_name", raw_name)
     if key in smap.device_name:
         return smap.device_name[key]
-    n = smap.next_device_suffix
+
+    # Prefer preserving the device type prefix (e.g. RSATO+ / RSDOSE4-), and only
+    # replace the numeric suffix with a stable fake number of the same width.
+    m = re.fullmatch(r"([A-Za-z0-9]+[+\-])(\d+)", raw_name)
+    if m:
+        prefix = m.group(1)
+        width = len(m.group(2))
+        n = smap.next_device_suffix_by_prefix.get(prefix, 1)
+        smap.next_device_suffix_by_prefix[prefix] = n + 1
+        smap.device_name[key] = f"{prefix}{n:0{width}d}"
+        return smap.device_name[key]
+
+    # Fallback for unexpected formats.
+    n2 = smap.next_device_suffix
     smap.next_device_suffix += 1
-    smap.device_name[key] = f"DEVICE_{n}"
+    smap.device_name[key] = f"DEVICE_{n2}"
     return smap.device_name[key]
 
 
@@ -416,6 +496,11 @@ def _rand_mac(prefix: str | None = None) -> str:
 
 
 def map_mac(raw_mac: str, smap: SanitizeMap) -> str:
+    # Idempotence: if we already produced this value, don't re-map it.
+    norm = raw_mac.strip().upper()
+    if norm in (v.upper() for v in smap.mac.values()):
+        return norm
+
     key = _hash_key("mac", raw_mac.lower())
     if key in smap.mac:
         return smap.mac[key]
@@ -424,6 +509,11 @@ def map_mac(raw_mac: str, smap: SanitizeMap) -> str:
 
 
 def map_bssid(raw_bssid: str, smap: SanitizeMap) -> str:
+    # Idempotence: if we already produced this value, don't re-map it.
+    norm = raw_bssid.strip().upper()
+    if norm in (v.upper() for v in smap.bssid.values()):
+        return norm
+
     key = _hash_key("bssid", raw_bssid.lower())
     if key in smap.bssid:
         return smap.bssid[key]
@@ -432,7 +522,17 @@ def map_bssid(raw_bssid: str, smap: SanitizeMap) -> str:
 
 
 def map_ip_address(raw_ip: str, smap: SanitizeMap) -> str:
-    key = _hash_key("ip_address", raw_ip)
+    # If the caller accidentally passes an already-sanitized IP (e.g. from a prior run),
+    # keep mapping idempotent and avoid polluting the sanitize map with synthetic values.
+    norm = raw_ip.strip()
+    if re.fullmatch(r"10\.0\.0\.(?:[0-9]{1,3})", norm):
+        return norm
+
+    # Idempotence: if we already produced this value, don't re-map it.
+    if norm in smap.ip_address.values():
+        return norm
+
+    key = _hash_key("ip_address", norm)
     if key in smap.ip_address:
         return smap.ip_address[key]
     host = smap.next_ip_host
@@ -443,13 +543,24 @@ def map_ip_address(raw_ip: str, smap: SanitizeMap) -> str:
 
 
 def map_ssid(raw_ssid: str, smap: SanitizeMap) -> str:
-    key = _hash_key("ssid", raw_ssid)
-    if key in smap.ssid:
-        return smap.ssid[key]
-    n = smap.next_ssid_suffix
-    smap.next_ssid_suffix += 1
-    smap.ssid[key] = f"REDACTED_SSID_{n}"
-    return smap.ssid[key]
+    # Collapse all SSIDs to a single sanitized value.
+    # WiFi scan endpoints can include many nearby SSIDs; keeping them distinct
+    # unnecessarily grows the mapping file.
+    _ = raw_ssid
+    __ = smap
+    return SANITIZED_SSID
+
+
+def stable_device_uuid(raw_hwid: str) -> str:
+    """Return a deterministic UUID derived from a (hashed) device id."""
+    h = hashlib.sha256()
+    h.update(b"device_uuid\x00")
+    h.update(raw_hwid.lower().encode("utf-8", errors="replace"))
+    b = bytearray(h.digest()[:16])
+    # Set RFC4122 variant + a stable UUID version nibble.
+    b[6] = (b[6] & 0x0F) | 0x40
+    b[8] = (b[8] & 0x3F) | 0x80
+    return str(uuid.UUID(bytes=bytes(b)))
 
 
 def map_serial_code(raw_code: str, smap: SanitizeMap) -> str:
@@ -929,6 +1040,59 @@ def fetch_url_http(ip: str, url: str, timeout: float) -> bytes:
         return b""
 
 
+def detect_device_type(ip: str, *, timeout: int) -> str:
+    """Detect fixture device type from the device's /device-info endpoint."""
+    raw = fetch_url_http(ip, "/device-info", timeout=timeout)
+    payload_any = _safe_json_loads(raw)
+    if not isinstance(payload_any, dict):
+        raise RuntimeError("Could not parse /device-info JSON")
+
+    payload = cast(dict[str, Any], payload_any)
+    hw_type = payload.get("hw_type")
+    hw_model = payload.get("hw_model")
+
+    hw_type_s = hw_type.strip().lower() if isinstance(hw_type, str) else ""
+    hw_model_s = hw_model.strip().upper() if isinstance(hw_model, str) else ""
+
+    # Primary mapping from hw_type (e.g. reef-ato -> ATO)
+    if hw_type_s == "reef-ato":
+        return "ATO"
+    if hw_type_s == "reef-lights":
+        return "LED"
+    if hw_type_s == "reef-run":
+        return "RUN"
+    if hw_type_s == "reef-wave":
+        return "WAVE"
+    if hw_type_s == "reef-mat":
+        return "MAT"
+
+    # reef-dosing needs model-based disambiguation
+    if hw_type_s == "reef-dosing":
+        if "DOSE2" in hw_model_s:
+            return "DOSE2"
+        if "DOSE4" in hw_model_s:
+            return "DOSE4"
+        return "DOSE4"
+
+    # Fallback if hw_type is missing
+    if "DOSE2" in hw_model_s:
+        return "DOSE2"
+    if "DOSE4" in hw_model_s:
+        return "DOSE4"
+    if "ATO" in hw_model_s:
+        return "ATO"
+    if "LED" in hw_model_s:
+        return "LED"
+    if "RUN" in hw_model_s:
+        return "RUN"
+    if "WAVE" in hw_model_s:
+        return "WAVE"
+    if "MAT" in hw_model_s:
+        return "MAT"
+
+    raise RuntimeError(f"Could not detect type (hw_type={hw_type!r}, hw_model={hw_model!r})")
+
+
 def format_json_bytes(data: bytes) -> bytes:
     """Pretty-format JSON bytes; return original bytes if not JSON."""
     try:
@@ -954,6 +1118,8 @@ def _iter_urls_from_fixture_tree(type_root: Path) -> list[str]:
         if not data_file.is_file():
             continue
         rel_dir = data_file.parent.relative_to(type_root)
+        if any(p.startswith(".") for p in rel_dir.parts):
+            continue
         if str(rel_dir) == ".":
             urls.append("/")
         else:
@@ -1012,12 +1178,19 @@ def sanitize_local_payload(url: str, payload: JsonValue, smap: SanitizeMap) -> J
     return _deep_key_sanitize(_deep_redact(payload), smap)
 
 
-def rewrite_local_download(data: bytes, ip: str, url: str, *, smap: SanitizeMap | None = None) -> bytes:
+def rewrite_local_download(
+    data: bytes,
+    ip: str,
+    url: str,
+    *,
+    smap: SanitizeMap | None = None,
+    device_hwid: str | None = None,
+) -> bytes:
     """Rewrite a local download so it is safe + stable in fixtures.
 
-    - Replaces real IP with __REEFBEAT_DEVICE_IP__ for text payloads
+    - Replaces real IP with a stable sanitized IP for text payloads
     - Pretty-formats JSON (and sanitizes with smap when provided)
-    - Rotates UUID in description.xml and pretty-formats XML
+    - Rewrites UUID in description.xml deterministically and pretty-formats XML
     """
     if not data:
         return data
@@ -1028,10 +1201,15 @@ def rewrite_local_download(data: bytes, ip: str, url: str, *, smap: SanitizeMap 
     except UnicodeDecodeError:
         return data
 
-    text = text.replace(ip, "__REEFBEAT_DEVICE_IP__")
+    if smap is not None:
+        mapped_ip = map_ip_address(ip, smap)
+        text = text.replace(ip, mapped_ip)
 
     if url == "/description.xml":
-        new_uuid = str(uuid.uuid4())
+        if device_hwid:
+            new_uuid = stable_device_uuid(device_hwid)
+        else:
+            new_uuid = stable_device_uuid(ip)
         text = _UUID_RE.sub(f"uuid:{new_uuid}", text)
 
         return format_xml_bytes(text.encode("utf-8"))
@@ -1076,39 +1254,20 @@ def read_identity(root: Path) -> DeviceIdentity:
     return DeviceIdentity(hwid=hwid, name=name)
 
 
-def random_48bit_hex() -> str:
-    n = random.randint(1, (1 << 48) - 1)
-    return f"{n:x}"
-
-
-def new_sim_name(old_name: str) -> str:
-    rand = random.randint(1, 9_999_999_999)
-    replaced = re.sub(r"-[0-9]*", f"-{rand}", old_name, count=1)
-    return f"SIMU-{replaced}"
-
-
-def replace_in_all_data_files(root: Path, urls: Iterable[str], old: DeviceIdentity, new: DeviceIdentity) -> None:
-    for url in urls:
-        d = dest_dir_for_url(url, root)
-        data_path = d / "data"
-        if not data_path.exists() or data_path.stat().st_size == 0:
-            continue
-
-        text = data_path.read_text(encoding="utf-8", errors="replace")
-        text = text.replace(old.hwid, new.hwid)
-        text = text.replace(old.name, new.name)
-        data_path.write_text(text, encoding="utf-8")
-
-
-def snapshot_local_device(ip: str, device_type: str, out_root: Path, timeout: int) -> None:
+def snapshot_local_device(ip: str, device_type: str, out_root: Path, timeout: int, *, save_raw: bool = False) -> None:
     if not ping_host(ip):
         raise RuntimeError(f"{ip} not alive")
 
     urls = iter_urls(device_type)
+    # Ensure we fetch /device-info first so we can derive deterministic IDs for XML, etc.
+    if "/device-info" in urls:
+        urls = ["/device-info", *[u for u in urls if u != "/device-info"]]
 
     # Reuse the same local-only mapping file as cloud export for stable sanitization.
     map_path = Path(SANITIZE_MAP_FILENAME)
     smap = load_sanitize_map(map_path)
+
+    raw_root = out_root / ".raw" if save_raw else None
 
     old_id: DeviceIdentity | None = None
 
@@ -1118,6 +1277,16 @@ def snapshot_local_device(ip: str, device_type: str, out_root: Path, timeout: in
         d.mkdir(parents=True, exist_ok=True)
 
         data = fetch_url_http(ip, url, timeout=timeout)
+
+        if raw_root is not None:
+            raw_dest = dest_dir_for_url(url, raw_root)
+            raw_dest.mkdir(parents=True, exist_ok=True)
+            raw_bytes = data
+            if url == "/description.xml":
+                raw_bytes = format_xml_bytes(raw_bytes)
+            else:
+                raw_bytes = format_json_bytes(raw_bytes)
+            (raw_dest / "data").write_bytes(raw_bytes)
 
         # Capture raw identity before sanitizing /device-info
         if url == "/device-info" and data and old_id is None:
@@ -1129,7 +1298,7 @@ def snapshot_local_device(ip: str, device_type: str, out_root: Path, timeout: in
                 if isinstance(hwid, str) and hwid and isinstance(name, str) and name:
                     old_id = DeviceIdentity(hwid=hwid.lower(), name=name)
 
-        data = rewrite_local_download(data, ip, url, smap=smap)
+        data = rewrite_local_download(data, ip, url, smap=smap, device_hwid=(old_id.hwid if old_id else None))
 
         data_path = d / "data"
         data_path.write_bytes(data)
@@ -1147,13 +1316,6 @@ def snapshot_local_device(ip: str, device_type: str, out_root: Path, timeout: in
             else:
                 data_path.unlink(missing_ok=True)
 
-    # Rewrite identity (hwid + name) across the downloaded files using stable mapping.
-    if old_id is not None:
-        new_id = DeviceIdentity(hwid=map_device_hwid(old_id.hwid, smap), name=map_device_name(old_id.name, smap))
-        logger.info(f"Changing name from {old_id.name} to {new_id.name}")
-        logger.info(f"Changing serial from {old_id.hwid} to {new_id.hwid}")
-        replace_in_all_data_files(out_root, urls, old_id, new_id)
-
     # Persist mapping after successful export.
     save_sanitize_map(map_path, smap)
 
@@ -1163,22 +1325,35 @@ def snapshot_local_device(ip: str, device_type: str, out_root: Path, timeout: in
 # =============================================================================
 
 
-def _redact_string(value: str) -> str:
+def _redact_string(value: str, *, allow_uuid: bool = True) -> str:
     s = _EMAIL_RE.sub("user@example.com", value)
     s = _PHONE_RE.sub("+10000000000", s)
-    s = _UUID_RE.sub("uuid:00000000-0000-0000-0000-000000000000", s)  # your existing pattern
-    s = _RAW_UUID_RE.sub("00000000-0000-0000-0000-000000000000", s)
+    if allow_uuid:
+        s = _UUID_RE.sub("uuid:00000000-0000-0000-0000-000000000000", s)  # your existing pattern
+        s = _RAW_UUID_RE.sub("00000000-0000-0000-0000-000000000000", s)
     return s
 
 
-def _deep_redact(value: JsonValue) -> JsonValue:
+def _deep_redact(value: JsonValue, path: tuple[str, ...] = ()) -> JsonValue:
     if isinstance(value, dict):
         # recurse while preserving JSON types
-        return {k: _deep_redact(v) for k, v in value.items()}
+        return {k: _deep_redact(v, path + (k,)) for k, v in value.items()}
     if isinstance(value, list):
-        return [_deep_redact(v) for v in value]
+        # Lists don't add a stable key component to the path.
+        return [_deep_redact(v, path) for v in value]
     if isinstance(value, str):
-        return _redact_string(value)
+        # Requirement: supplement uids must remain unchanged.
+        redact_uuid = True
+
+        # Keep supplement.uid unchanged.
+        if len(path) >= 2 and path[-2] == "supplement" and path[-1] == "uid":
+            redact_uuid = False
+
+        # Preserve mapped linkage UUIDs so relationships remain consistent across payloads.
+        if path and path[-1] in {"uid", "user_uid", "aquarium_uid"}:
+            redact_uuid = False
+
+        return _redact_string(value, allow_uuid=redact_uuid)
     return value
 
 
@@ -1189,6 +1364,25 @@ def _deep_key_sanitize(value: JsonValue, smap: SanitizeMap) -> JsonValue:
     if isinstance(value, dict):
         out: JsonObject = {}
         for k, v in value.items():
+            # Never keep API keys/secrets in fixtures (even partially masked).
+            k_lower = k.lower()
+            if k_lower in {
+                "api_key",
+                "api_secret",
+                "secret",
+                "client_secret",
+                "access_token",
+                "refresh_token",
+                "token",
+            }:
+                out[k] = SANITIZED_SECRET
+                continue
+
+            # Keep local WiFi gateway consistent with the sanitized subnet.
+            if k in {"gateway", "gateway_ip", "default_gateway"}:
+                out[k] = SANITIZED_GATEWAY
+                continue
+
             if k in {"mac", "bssid"}:
                 if isinstance(v, str) and v:
                     out[k] = map_mac(v, smap) if k == "mac" else map_bssid(v, smap)
@@ -1225,9 +1419,10 @@ def _sanitize_cloud_aquarium(payload: JsonValue, smap: SanitizeMap) -> JsonValue
             raw_uid = obj_in.get("uid")
             raw_user_uid = obj_in.get("user_uid")
             if isinstance(raw_id, int):
-                obj["id"] = map_aquarium_id(raw_id, smap)
+                mapped_id = map_aquarium_id(raw_id, smap)
             else:
-                obj["id"] = SANITIZED_AQUARIUM_ID
+                mapped_id = SANITIZED_AQUARIUM_ID
+            obj["id"] = mapped_id
             if isinstance(raw_uid, str) and raw_uid:
                 obj["uid"] = map_aquarium_uid(raw_uid, smap)
             else:
@@ -1236,7 +1431,8 @@ def _sanitize_cloud_aquarium(payload: JsonValue, smap: SanitizeMap) -> JsonValue
                 obj["user_uid"] = map_user_uid(raw_user_uid, smap)
             else:
                 obj["user_uid"] = cast(str, SANITIZED_USER["uid"])
-            obj["name"] = SANITIZED_AQUARIUM_NAME
+            # Keep names unique but non-identifying.
+            obj["name"] = f"{SANITIZED_AQUARIUM_NAME} {max(1, int(mapped_id) - (SANITIZED_AQUARIUM_ID - 1))}"
             obj["system_model"] = SANITIZED_SYSTEM_MODEL
             # scrub any remaining embedded PII
             out_list.append(_deep_key_sanitize(_deep_redact(obj), smap))
@@ -1249,9 +1445,10 @@ def _sanitize_cloud_aquarium(payload: JsonValue, smap: SanitizeMap) -> JsonValue
         raw_uid2 = obj2.get("uid")
         raw_user_uid2 = obj2.get("user_uid")
         if isinstance(raw_id2, int):
-            obj["id"] = map_aquarium_id(raw_id2, smap)
+            mapped_id2 = map_aquarium_id(raw_id2, smap)
         else:
-            obj["id"] = SANITIZED_AQUARIUM_ID
+            mapped_id2 = SANITIZED_AQUARIUM_ID
+        obj["id"] = mapped_id2
         if isinstance(raw_uid2, str) and raw_uid2:
             obj["uid"] = map_aquarium_uid(raw_uid2, smap)
         else:
@@ -1260,7 +1457,7 @@ def _sanitize_cloud_aquarium(payload: JsonValue, smap: SanitizeMap) -> JsonValue
             obj["user_uid"] = map_user_uid(raw_user_uid2, smap)
         else:
             obj["user_uid"] = cast(str, SANITIZED_USER["uid"])
-        obj["name"] = SANITIZED_AQUARIUM_NAME
+        obj["name"] = f"{SANITIZED_AQUARIUM_NAME} {max(1, int(mapped_id2) - (SANITIZED_AQUARIUM_ID - 1))}"
         obj["system_model"] = SANITIZED_SYSTEM_MODEL
         return _deep_key_sanitize(_deep_redact(cast(JsonValue, obj)), smap)
 
@@ -1443,6 +1640,15 @@ def cloud_get_json(path: str, token: str, timeout: int) -> Any:
         return {}
 
 
+def cloud_get_raw(path: str, token: str, timeout: int) -> tuple[int, bytes]:
+    url = f"https://{CLOUD_SERVER_ADDR}{path}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+    }
+    return http_request("GET", url, headers=headers, timeout=timeout)
+
+
 def resolve_cloud_creds(
     cli_username: str | None,
     cli_password: str | None,
@@ -1460,7 +1666,7 @@ def resolve_cloud_creds(
     return None
 
 
-def snapshot_cloud(out_root: Path, timeout: int, username: str, password: str) -> bool:
+def snapshot_cloud(out_root: Path, timeout: int, username: str, password: str, *, save_raw: bool = False) -> bool:
     logger.info("Authenticating to ReefBeat cloud...")
     token = cloud_auth_token(username, password, timeout=timeout)
     if not token:
@@ -1473,14 +1679,26 @@ def snapshot_cloud(out_root: Path, timeout: int, username: str, password: str) -
     map_path = Path(SANITIZE_MAP_FILENAME)
     smap = load_sanitize_map(map_path)
 
+    raw_root = out_root / ".raw" if save_raw else None
+
     logger.info("Exporting cloud endpoints...")
     for path in CLOUD_URLS:
         logger.info(path)
-        payload = cloud_get_json(path, token, timeout=timeout)
+        status, raw_bytes = cloud_get_raw(path, token, timeout=timeout)
+        payload: Any = {}
+        if status == 200 and raw_bytes:
+            try:
+                payload = json.loads(raw_bytes.decode("utf-8", errors="replace"))
+            except json.JSONDecodeError:
+                payload = {}
 
         dest = dest_dir_for_url(path, out_root)
         dest.mkdir(parents=True, exist_ok=True)
-        # (dest / "data").write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+        if raw_root is not None:
+            raw_dest = dest_dir_for_url(path, raw_root)
+            raw_dest.mkdir(parents=True, exist_ok=True)
+            (raw_dest / "data").write_bytes(format_json_bytes(raw_bytes))
 
         json_payload: JsonValue = cast(JsonValue, payload)
         sanitized: JsonValue = sanitize_cloud_payload(path, json_payload, smap)
@@ -1498,11 +1716,11 @@ def snapshot_cloud(out_root: Path, timeout: int, username: str, password: str) -
     return True
 
 
-def infer_out_dir(out_root: Path, device_type: str | None, cloud_only: bool) -> Path:
-    if cloud_only:
+def infer_out_dir(out_root: Path, device_type: str | None, cloud: bool) -> Path:
+    if cloud:
         return out_root / "CLOUD"
     if not device_type:
-        raise ValueError("device_type is required unless cloud_only=True")
+        raise ValueError("device_type is required unless cloud=True")
     return out_root / device_type
 
 
@@ -1517,10 +1735,13 @@ def main() -> int:
         return cmd_scan(sys.argv[2:])
 
     ap = argparse.ArgumentParser(description="Create simulator fixture tree from a ReefBeat device (+ optional cloud).")
-    ap.add_argument("--ip", help="Device IP address (required unless --cloud-only)")
-    ap.add_argument("--type", choices=available_device_types(), help="Device type (required unless --cloud-only)")
-    ap.add_argument("--cloud-only", action="store_true", help="Only export cloud data (skip local)")
-    ap.add_argument("--local-only", action="store_true", help="Only export local data (skip cloud)")
+    ap.add_argument("--ip", help="Device IP address (required unless --cloud)")
+    ap.add_argument(
+        "--type",
+        choices=available_device_types(),
+        help="Device type (optional; auto-detected from /device-info when omitted)",
+    )
+    ap.add_argument("--cloud", action="store_true", help="Only export cloud data (skip local)")
     ap.add_argument("--out-root", default="devices", help="Base output directory (default: ./devices)")
     ap.add_argument("--username", help=f"Cloud username (optional; overrides .env {ENV_USERNAME})")
     ap.add_argument("--password", help=f"Cloud password (optional; overrides .env {ENV_PASSWORD})")
@@ -1530,45 +1751,52 @@ def main() -> int:
         default=HTTP_TIMEOUT_SECS_DEFAULT,
         help=f"HTTP timeout seconds (default: {HTTP_TIMEOUT_SECS_DEFAULT})",
     )
+    ap.add_argument(
+        "--save-raw",
+        action="store_true",
+        help="Also save raw (unsanitized) endpoint payloads under <out>/.raw (recommended to gitignore)",
+    )
     args = ap.parse_args()
 
-    if args.ip and not args.type and not args.cloud_only:
-        logger.error("When --ip is provided, --type is also required.")
-        return 2
-
     out_root = Path(args.out_root).resolve()
-    out_dir = infer_out_dir(out_root, args.type, cloud_only=bool(args.cloud_only))
-    out_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.cloud_only and args.local_only:
-        logger.info("Choose only one of --cloud-only or --local-only.")
-        return 2
-
-    # Cloud-only
-    if args.cloud_only:
+    # Cloud only
+    if args.cloud:
+        out_dir = infer_out_dir(out_root, None, cloud=True)
+        out_dir.mkdir(parents=True, exist_ok=True)
         creds = resolve_cloud_creds(args.username, args.password, Path(".env"))
         if not creds:
             logger.info(
-                "No cloud credentials provided (use --username/--password or .env). Cloud-only requested; nothing to do."
+                "No cloud credentials provided (use --username/--password or .env). Cloud requested; nothing to do."
             )
             return 2
-        snapshot_cloud(out_dir, timeout=int(args.timeout), username=creds[0], password=creds[1])
+        snapshot_cloud(
+            out_dir,
+            timeout=int(args.timeout),
+            username=creds[0],
+            password=creds[1],
+            save_raw=bool(args.save_raw),
+        )
         return 0
 
-    # Local requires ip + type
-    if not args.ip or not args.type:
-        logger.info("Missing --ip and/or --type (required unless --cloud-only).")
+    # Local requires IP; type can be auto-detected.
+    if not args.ip:
+        logger.info("Missing --ip (required unless --cloud).")
         return 2
 
-    snapshot_local_device(args.ip, args.type, out_dir, timeout=int(args.timeout))
+    device_type = args.type
+    if not device_type:
+        try:
+            device_type = detect_device_type(args.ip, timeout=int(args.timeout))
+        except Exception as e:
+            logger.info(f"Could not detect device type from {args.ip}: {e}")
+            return 2
+        logger.info(f"Detected device type: {device_type}")
 
-    # Optional cloud (writes under <out_dir>/cloud)
-    if not args.local_only:
-        creds = resolve_cloud_creds(args.username, args.password, Path(".env"))
-        if not creds:
-            logger.info("No .env or CLI creds found; skipping cloud export.")
-        else:
-            snapshot_cloud(out_dir / "cloud", timeout=int(args.timeout), username=creds[0], password=creds[1])
+    out_dir = infer_out_dir(out_root, device_type, cloud=False)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    snapshot_local_device(args.ip, device_type, out_dir, timeout=int(args.timeout), save_raw=bool(args.save_raw))
 
     return 0
 
