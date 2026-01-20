@@ -1,0 +1,18 @@
+{
+    "kelvin": 15000,
+    "intensity": 26,
+    "white": 16,
+    "white_full": 16.46,
+    "white_pwm": 1359,
+    "blue": 22,
+    "blue_full": 22.25,
+    "blue_pwm": 1736,
+    "moon": 0,
+    "moon_full": 0,
+    "moon_pwm": 0,
+    "fan": 0,
+    "fan_full": 0,
+    "temperature": 40.7996520996094,
+    "frequency_khz": 25,
+    "resolution_bits": 12
+}

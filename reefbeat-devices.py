@@ -82,7 +82,9 @@ class MyServer(HTTPServer):
     config: ServerConfig
     _db: dict[str, dict[str, Any]]
 
-    def __init__(self, handler: type[BaseHTTPRequestHandler], config: ServerConfig) -> None:
+    def __init__(
+        self, handler: type[BaseHTTPRequestHandler], config: ServerConfig
+    ) -> None:
         """Initialize the server and preload all fixture data.
 
         Args:
@@ -98,7 +100,9 @@ class MyServer(HTTPServer):
         # Test if local IP exists
         must_create_ip = True
         for line in (
-            subprocess.Popen(["ip", "addr", "show", "dev", "eth0"], stdout=subprocess.PIPE)
+            subprocess.Popen(
+                ["ip", "addr", "show", "dev", "eth0"], stdout=subprocess.PIPE
+            )
             .communicate()[0]
             .splitlines()
         ):
@@ -111,22 +115,30 @@ class MyServer(HTTPServer):
             time.sleep(3)
         super().__init__((self.config.ip, self.config.port), handler)
         # fetch all_data and put them in cache
-        for file_p in list(pathlib.Path().rglob("data")):
+        for file_p in list(pathlib.Path(self.config.base_url).rglob("data")):
             file_s = str(file_p)
             path = file_s.replace("/data", "").replace(self.config.base_url, "")
+            if path == "":
+                path = "/"
             self._db[path] = {}
             with open(file_s) as f:
                 if file_s.endswith("description.xml/data"):
                     data = f.read()
                 else:
-                    data = json.loads(json.dumps(json.load(f)).replace("__REEFBEAT_DEVICE_IP__", self.config.ip))
+                    data = json.loads(
+                        json.dumps(json.load(f)).replace(
+                            "__REEFBEAT_DEVICE_IP__", self.config.ip
+                        )
+                    )
                 self._db[path]["data"] = data
                 rights: list[str] = []
                 if path not in self.config.access.no_GET:
                     rights += ["GET"]
                 methods = ["POST", "PUT"]
                 for method in methods:
-                    if hasattr(self.config.access, method) and path in getattr(self.config.access, method):
+                    if hasattr(self.config.access, method) and path in getattr(
+                        self.config.access, method
+                    ):
                         rights += [method]
                 access: dict[str, list[str]] = {"rights": rights}
                 self._db[path]["access"] = access
@@ -158,7 +170,6 @@ class MyServer(HTTPServer):
             The cached data if present; an empty string if the entry exists but
             has no data; otherwise `None`.
         """
-
         if path in self._db:
             if "data" in self._db[path]:
                 return self._db[path]["data"]
@@ -166,7 +177,9 @@ class MyServer(HTTPServer):
                 return ""
         return None
 
-    def get_post_action(self, path: str) -> Optional[Union[PostActionRule, Sequence[PostActionRule]]]:
+    def get_post_action(
+        self, path: str
+    ) -> Optional[Union[PostActionRule, Sequence[PostActionRule]]]:
         """Get a post-action rule for a given API path.
 
         Args:
@@ -180,7 +193,10 @@ class MyServer(HTTPServer):
         entry = self._db.get(path)
         if not entry:
             return None
-        return cast(Optional[Union[PostActionRule, Sequence[PostActionRule]]], entry.get("action"))
+        return cast(
+            Optional[Union[PostActionRule, Sequence[PostActionRule]]],
+            entry.get("action"),
+        )
 
     def is_allow(self, path: str, method: str) -> bool:
         """Check whether an HTTP method is allowed for an API path.
@@ -225,7 +241,6 @@ class HttpServer(BaseHTTPRequestHandler):
         Returns:
             Cached payload, or `None` if not found.
         """
-
         if path == "":
             path = "/"
         return cast(MyServer, self.server).get_data(path)
@@ -302,7 +317,9 @@ class HttpServer(BaseHTTPRequestHandler):
             if r_data:
                 post_action = server.get_post_action(self.path)
                 if post_action:
-                    if isinstance(post_action, ABCSequence) and not isinstance(post_action, (str, bytes, bytearray)):
+                    if isinstance(post_action, ABCSequence) and not isinstance(
+                        post_action, (str, bytes, bytearray)
+                    ):
                         actions: list[PostActionRule] = list(post_action)
                     else:
                         actions = [cast(PostActionRule, post_action)]
@@ -373,31 +390,38 @@ def ServerProcess(config: MutableMapping[str, Any]) -> None:
         None
     """
 
-    conf = cast(ServerConfig, json.loads(json.dumps(config), object_hook=lambda d: SimpleNamespace(**d)))
+    conf = cast(
+        ServerConfig,
+        json.loads(json.dumps(config), object_hook=lambda d: SimpleNamespace(**d)),
+    )
     if conf.enabled:
         try:
-            print("HTTP Server [%s] %s:%d running - Use Ctrl-C to terminate" % (conf.name, conf.ip, conf.port))
+            print(
+                "HTTP Server [%s] %s:%d running - Use Ctrl-C to terminate"
+                % (conf.name, conf.ip, conf.port)
+            )
             httpd = MyServer(HttpServer, conf)
             while True:
                 httpd.handle_request()
         except Exception:
-                print("Unable to start server")
-                print(traceback.format_exc())
+            print("Unable to start server")
+            print(traceback.format_exc())
 
 
 if __name__ == "__main__":
     if os.geteuid() != 0:
         print("Must be run as root")
-        sys.exit(1);
+        sys.exit(1)
 
     with open("config.json") as f:
         confs: dict[str, Any] = json.load(f)
 
     threads: list[Thread] = []
     for conf in confs["devices"]:
-        thread = Thread(target=ServerProcess, args=[conf])
-        threads += [thread]
-        thread.start()
+        if conf["enabled"]:
+            thread = Thread(target=ServerProcess, args=[conf])
+            threads += [thread]
+            thread.start()
 
     try:
         for thread in threads:

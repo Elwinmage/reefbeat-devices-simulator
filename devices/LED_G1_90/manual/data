@@ -1,0 +1,10 @@
+{
+    "white": 40,
+    "white_pwm": 1638,
+    "blue": 65,
+    "blue_pwm": 2662,
+    "moon": 0,
+    "moon_pwm": 0,
+    "fan": 65,
+    "temperature": 46.06637
+}
