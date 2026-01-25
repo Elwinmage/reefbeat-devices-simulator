@@ -4,7 +4,7 @@
       "enabled": true,
       "name": "RSDOSE4",
       "base_url": "devices/DOSE4",
-      "ip": "192.168.0.251",
+      "ip": "192.168.0.240",
       "port": 80,
       "access": {
         "no_GET": [],
@@ -50,7 +50,7 @@
       "enabled": false,
       "name": "RSATO",
       "base_url": "devices/ATO",
-      "ip": "192.168.0.252",
+      "ip": "192.168.0.241",
       "port": 80,
       "access": {
         "no_GET": [],
@@ -62,7 +62,7 @@
       "enabled": false,
       "name": "LED_G1_160",
       "base_url": "devices/LED_G1_160",
-      "ip": "192.168.0.253",
+      "ip": "192.168.0.242",
       "port": 80,
       "access": {
         "no_GET": [],
@@ -74,7 +74,7 @@
       "enabled": false,
       "name": "LED_G2",
       "base_url": "devices/LED_G2_115",
-      "ip": "192.168.0.254",
+      "ip": "192.168.0.243",
       "port": 80,
       "access": {
         "no_GET": [],
@@ -86,6 +86,18 @@
       "enabled": false,
       "name": "LED_G1_90",
       "base_url": "devices/LED_G1_90",
+      "ip": "192.168.0.244",
+      "port": 80,
+      "access": {
+        "no_GET": [],
+        "PUT": []
+      },
+      "post_actions": []
+    },
+    {
+      "enabled": true,
+      "name": "RSDOSE2",
+      "base_url": "devices/DOSE2",
       "ip": "192.168.0.250",
       "port": 80,
       "access": {
