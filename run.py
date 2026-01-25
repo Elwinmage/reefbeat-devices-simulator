@@ -258,6 +258,26 @@ SANITIZE_MAP_USE_HASH_KEYS: Final[bool] = os.getenv("REEFBEAT_SANITIZE_MAP_USE_H
 
 _UUID_RE: Final[re.Pattern[str]] = re.compile(r"uuid:[0-9a-zA-Z\-]+")
 
+# LED model strings look like RSLED90 / RSLED160 / RSLED115.
+_RSLED_MODEL_RE: Final[re.Pattern[str]] = re.compile(r"\bRSLED(?P<size>\d+)\b", re.IGNORECASE)
+
+# Override maps for LED generation inference.
+#
+# Some firmwares report ambiguous hw_revision strings (e.g. "v2.2_23F") that don't
+# explicitly include "G1"/"G2". By default we assume G1 unless we see "G2" in the
+# device identity fields. If you find exceptions, pin them here.
+#
+# Examples:
+#   - Override by HWID (preferred / stable):
+#       LED_GEN_OVERRIDE_BY_HWID = {"521f271d32c8": "G2"}
+#
+#   - Override by name (fallback when hwid is missing or bogus like "null").
+#     Note: this must match the *exact* payload["name"] string returned by /device-info
+#     for your device/firmware (some firmwares append a suffix).
+#       LED_GEN_OVERRIDE_BY_NAME = {"RSLED90": "G1"}
+LED_GEN_OVERRIDE_BY_HWID: Final[dict[str, str]] = {}
+LED_GEN_OVERRIDE_BY_NAME: Final[dict[str, str]] = {}
+
 _EMAIL_RE: Final[re.Pattern[str]] = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _PHONE_RE: Final[re.Pattern[str]] = re.compile(r"\+\d{7,15}")
 _RAW_UUID_RE: Final[re.Pattern[str]] = re.compile(
@@ -960,9 +980,10 @@ def scan_network_for_devices(
             payload = cast(dict[str, Any], payload_any)
             name = payload.get("name")
             hwid = payload.get("hwid")
-            model = payload.get("model")
-            fw = payload.get("firmware_version")
-            dtype = payload.get("type")
+            # Different firmware revisions use different key names.
+            model = payload.get("model") if payload.get("model") is not None else payload.get("hw_model")
+            fw = payload.get("firmware_version") if payload.get("firmware_version") is not None else payload.get("fw")
+            dtype = payload.get("type") if payload.get("type") is not None else payload.get("hw_type")
 
             if not isinstance(name, str) or not name:
                 return None
@@ -1270,6 +1291,10 @@ def iter_urls(device_type: str) -> list[str]:
     if fixture_urls:
         return fixture_urls
 
+    # Support LED variants (e.g. LED_G1_90) during first-time capture.
+    if device_type.startswith("LED_"):
+        return [*BASE_URLS, *LED_URLS]
+
     if device_type not in TYPE_MAP:
         raise ValueError(f"Unsupported TYPE {device_type!r}. Use one of {sorted(available_device_types())}")
     return [*BASE_URLS, *TYPE_MAP[device_type]]
@@ -1321,7 +1346,7 @@ def detect_device_type(ip: str, *, timeout: int) -> str:
         timeout: HTTP timeout in seconds.
 
     Returns:
-        Fixture type string (e.g. ``ATO``, ``DOSE4``, ``LED``).
+        Fixture type string (e.g. ``ATO``, ``DOSE4``, ``LED_G1_90``).
 
     Raises:
         RuntimeError: If the device-info payload is missing/invalid or cannot be mapped.
@@ -1332,8 +1357,51 @@ def detect_device_type(ip: str, *, timeout: int) -> str:
         raise RuntimeError("Could not parse /device-info JSON")
 
     payload = cast(dict[str, Any], payload_any)
-    hw_type = payload.get("hw_type")
-    hw_model = payload.get("hw_model")
+    return device_type_from_device_info_payload(payload)
+
+
+def _detect_led_variant(
+    hw_model_s: str,
+    hw_revision: Any,
+    *,
+    evidence_s: str,
+    override_gen: str | None,
+) -> str | None:
+    """Map RSLED model/revision to a fixture folder name.
+
+    Examples:
+        RSLED90 + G1... -> LED_G1_90
+        RSLED160 + v2... -> LED_G1_160 (default when generation is ambiguous)
+        RSLED115 + G2... -> LED_G2_115
+    """
+
+    m = _RSLED_MODEL_RE.search(hw_model_s)
+    if not m:
+        return None
+    size = m.group("size")
+
+    gen = (override_gen or "").strip().upper() if override_gen else ""
+    if gen not in {"G1", "G2"}:
+        # Prefer explicit generation markers when present.
+        rev_s = hw_revision.strip().upper() if isinstance(hw_revision, str) else ""
+        if "G2" in rev_s or "G2" in evidence_s:
+            gen = "G2"
+        else:
+            # Conservative default: assume G1 unless explicitly G2.
+            gen = "G1"
+
+    return f"LED_{gen}_{size}"
+
+
+def device_type_from_device_info_payload(payload: Mapping[str, Any]) -> str:
+    """Convert a /device-info payload into a fixture folder type."""
+
+    # Prefer hw_* keys; fall back to older/newer key names when present.
+    hw_type = payload.get("hw_type") if payload.get("hw_type") is not None else payload.get("type")
+    hw_model = payload.get("hw_model") if payload.get("hw_model") is not None else payload.get("model")
+    hw_rev = payload.get("hw_revision")
+    name = payload.get("name")
+    hwid = payload.get("hwid")
 
     hw_type_s = hw_type.strip().lower() if isinstance(hw_type, str) else ""
     hw_model_s = hw_model.strip().upper() if isinstance(hw_model, str) else ""
@@ -1341,7 +1409,23 @@ def detect_device_type(ip: str, *, timeout: int) -> str:
     if hw_type_s == "reef-ato":
         return "ATO"
     if hw_type_s == "reef-lights":
-        return "LED"
+        override_gen = None
+        if isinstance(hwid, str) and hwid and hwid in LED_GEN_OVERRIDE_BY_HWID:
+            override_gen = LED_GEN_OVERRIDE_BY_HWID[hwid]
+        elif isinstance(name, str) and name and name in LED_GEN_OVERRIDE_BY_NAME:
+            override_gen = LED_GEN_OVERRIDE_BY_NAME[name]
+
+        evidence_parts: list[str] = [hw_model_s]
+        if isinstance(hw_rev, str) and hw_rev:
+            evidence_parts.append(hw_rev)
+        if isinstance(name, str) and name:
+            evidence_parts.append(name)
+        if isinstance(hwid, str) and hwid:
+            evidence_parts.append(hwid)
+        evidence_s = " ".join(evidence_parts).upper()
+
+        led = _detect_led_variant(hw_model_s, hw_rev, evidence_s=evidence_s, override_gen=override_gen)
+        return led or "LED"
     if hw_type_s == "reef-run":
         return "RUN"
     if hw_type_s == "reef-wave":
@@ -1356,14 +1440,31 @@ def detect_device_type(ip: str, *, timeout: int) -> str:
             return "DOSE4"
         return "DOSE4"
 
+    # Fallback: infer from model string.
     if "DOSE2" in hw_model_s:
         return "DOSE2"
     if "DOSE4" in hw_model_s:
         return "DOSE4"
     if "ATO" in hw_model_s:
         return "ATO"
-    if "LED" in hw_model_s:
-        return "LED"
+    if "RSLED" in hw_model_s or "LED" in hw_model_s:
+        evidence_parts: list[str] = [hw_model_s]
+        if isinstance(hw_rev, str) and hw_rev:
+            evidence_parts.append(hw_rev)
+        if isinstance(name, str) and name:
+            evidence_parts.append(name)
+        if isinstance(hwid, str) and hwid:
+            evidence_parts.append(hwid)
+        evidence_s = " ".join(evidence_parts).upper()
+
+        override_gen = None
+        if isinstance(hwid, str) and hwid and hwid in LED_GEN_OVERRIDE_BY_HWID:
+            override_gen = LED_GEN_OVERRIDE_BY_HWID[hwid]
+        elif isinstance(name, str) and name and name in LED_GEN_OVERRIDE_BY_NAME:
+            override_gen = LED_GEN_OVERRIDE_BY_NAME[name]
+
+        led = _detect_led_variant(hw_model_s, hw_rev, evidence_s=evidence_s, override_gen=override_gen)
+        return led or "LED"
     if "RUN" in hw_model_s:
         return "RUN"
     if "WAVE" in hw_model_s:
