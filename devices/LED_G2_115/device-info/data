@@ -1,0 +1,9 @@
+{
+    "name": "RSLED115-3638651142",
+    "hw_type": "reef-lights",
+    "hw_model": "RSLED115",
+    "hw_revision": "G2Av0.1_24A",
+    "hwid": "aaaaaaaabba",
+    "success": true,
+    "message": "get device info successfully"
+}

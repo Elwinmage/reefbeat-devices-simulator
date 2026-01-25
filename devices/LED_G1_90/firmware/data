@@ -1,0 +1,11 @@
+{
+    "last_update": "never",
+    "last_update_attempt": "never",
+    "version": "1.6.1",
+    "update_server": "http://firmware.reef-beat.com/firmware/download/reef-lights?framework=i",
+    "last_message": "never",
+    "framework_version": "4.3.2",
+    "chip_revision": "RSLED90",
+    "success": true,
+    "message": "firmware check success"
+}

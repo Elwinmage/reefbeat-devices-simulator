@@ -31,7 +31,7 @@
           }
         },
         {
-          "request": "/head/42manual",
+          "request": "/head/2/manual",
           "action": {
             "target": "/dashboard",
             "action": "{'heads':{'2':{'manual_dosed_today':self.server._db['/dashboard']['data']['heads']['2']['manual_dosed_today']+r_data['volume']}}}"
@@ -47,7 +47,7 @@
       ]
     },
     {
-      "enabled": true,
+      "enabled": false,
       "name": "RSATO",
       "base_url": "devices/ATO",
       "ip": "192.168.0.252",
@@ -57,6 +57,43 @@
         "PUT": []
       },
       "post_actions": []
+    },
+    {
+      "enabled": false,
+      "name": "LED_G1_160",
+      "base_url": "devices/LED_G1_160",
+      "ip": "192.168.0.253",
+      "port": 80,
+      "access": {
+        "no_GET": [],
+        "PUT": []
+      },
+      "post_actions": []
+    },
+    {
+      "enabled": false,
+      "name": "LED_G2",
+      "base_url": "devices/LED_G2_115",
+      "ip": "192.168.0.254",
+      "port": 80,
+      "access": {
+        "no_GET": [],
+        "PUT": []
+      },
+      "post_actions": []
+    },
+    {
+      "enabled": false,
+      "name": "LED_G1_90",
+      "base_url": "devices/LED_G1_90",
+      "ip": "192.168.0.250",
+      "port": 80,
+      "access": {
+        "no_GET": [],
+        "PUT": []
+      },
+      "post_actions": []
     }
+    
   ]
 }
