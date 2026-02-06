@@ -8,4 +8,23 @@ repos:
       args: [ --fix ]
     # Run the formatter.
     - id: ruff-format
+- repo: local
+  hooks:
+     - id: pyright
+       name: pyright
+       entry: pyright
+       language: python
+       #args: [--project, pyrightconfig.precommit.json]
+       args: [--project, pyrightconfig.json]
+       additional_dependencies:
+         - pyright>=1.1.390
+         # Provide Home Assistant modules/types in the hook env.
+         - pytest-homeassistant-custom-component>=0.13.301
+         # Runtime dependency declared in manifest.json
+         - jsonpath-ng>=1.7.0
+         # Used by auto_detect.py
+         - requests>=2.31.0
+         # used by check_translation.py
+         - colorama>=0.4.6
+       pass_filenames: false
     

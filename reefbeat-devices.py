@@ -24,6 +24,8 @@ import subprocess
 import sys
 import time
 import traceback
+import hashlib
+import uuid
 from collections.abc import Sequence as ABCSequence
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
@@ -31,8 +33,15 @@ from types import SimpleNamespace
 from typing import Any, MutableMapping, Optional, Protocol, Sequence, Union, cast
 
 from jsonmerge import merge  # type: ignore[import]
+from optparse import OptionParser
+
+import function_extension
 
 JSONValue = Any
+
+
+class Object(object):
+    pass
 
 
 class PostActionRule(Protocol):
@@ -60,6 +69,11 @@ class AccessControl(Protocol):
     no_GET: Sequence[str]
 
 
+class ModifierFunction(Protocol):
+    name: str
+    params: Any
+
+
 class ServerConfig(Protocol):
     """Configuration required to run a simulated device HTTP server."""
 
@@ -70,6 +84,8 @@ class ServerConfig(Protocol):
     base_url: str
     access: AccessControl
     post_actions: Sequence[RequestPostAction]
+    actions: str
+    modifiers: Optional[Sequence[ModifierFunction]]
 
 
 class MyServer(HTTPServer):
@@ -94,8 +110,16 @@ class MyServer(HTTPServer):
         Returns:
             None
         """
-
+        self._ctx = Object()
         self.config = config
+        with open(self.config.actions) as f:
+            self.actions = cast(
+                ServerConfig,
+                json.loads(
+                    json.dumps(json.load(f)), object_hook=lambda d: SimpleNamespace(**d)
+                ),
+            )
+
         self._db = {}
         # Test if local IP exists
         must_create_ip = True
@@ -123,29 +147,41 @@ class MyServer(HTTPServer):
             self._db[path] = {}
             with open(file_s) as f:
                 if file_s.endswith("description.xml/data"):
-                    data = f.read()
+                    data = self.replace_ids(f.read())
                 else:
-                    data = json.loads(
-                        json.dumps(json.load(f)).replace(
-                            "__REEFBEAT_DEVICE_IP__", self.config.ip
-                        )
-                    )
+                    data = json.loads(self.replace_ids(json.dumps(json.load(f))))
+
                 self._db[path]["data"] = data
                 rights: list[str] = []
-                if path not in self.config.access.no_GET:
+                if path not in self.actions.access.no_GET:
                     rights += ["GET"]
                 methods = ["POST", "PUT"]
                 for method in methods:
-                    if hasattr(self.config.access, method) and path in getattr(
-                        self.config.access, method
+                    if hasattr(self.actions.access, method) and path in getattr(
+                        self.actions.access, method
                     ):
                         rights += [method]
                 access: dict[str, list[str]] = {"rights": rights}
                 self._db[path]["access"] = access
-        for action in self.config.post_actions:
+        for action in self.actions.post_actions:
             self._db[action.request] = {}
             self._db[action.request]["access"] = {"rights": ["POST"]}
             self._db[action.request]["action"] = action.action
+
+    def replace_ids(self, data):
+        new = data.replace("__REEFBEAT_DEVICE_IP__", self.config.ip)
+        new = new.replace("__REEFBEAT_NAME__", self.config.name)
+        new = new.replace(
+            "__REEFBEAT_HW_ID__",
+            str(
+                int(hashlib.sha1(self.config.name.encode("utf-8")).hexdigest(), 16)
+                % (10**12)
+            ),
+        )
+        new = new.replace(
+            "__REEFBEAT_UUID__", str(uuid.uuid3(uuid.NAMESPACE_X500, self.config.name))
+        )
+        return new
 
     def update_db(self, path: str, data: JSONValue) -> None:
         """Merge `data` into the DB entry for `path`.
@@ -172,7 +208,12 @@ class MyServer(HTTPServer):
         """
         if path in self._db:
             if "data" in self._db[path]:
-                return self._db[path]["data"]
+                data = self._db[path]["data"]
+                if hasattr(self.config, "modifiers") and self.config.modifiers:
+                    for func in self.config.modifiers:
+                        _ext = getattr(function_extension, func.name)
+                        data = _ext(path, data, func.params, self._ctx)
+                return data
             else:
                 return ""
         return None
@@ -409,11 +450,22 @@ def ServerProcess(config: MutableMapping[str, Any]) -> None:
 
 
 if __name__ == "__main__":
+    usage = "sudo %prog [-c <user_config_file>]"
+    exec_path = os.path.dirname(sys.argv[0])
+    version = "1.0.0"
+    parser = OptionParser(usage, version=version)
+    parser.add_option("-c", "--config", dest="config", help="Use a specific config")
+
+    (options, args) = parser.parse_args()
+
     if os.geteuid() != 0:
         print("Must be run as root")
+        parser.print_usage()
         sys.exit(1)
 
-    with open("config.json") as f:
+    conf_file = options.config or exec_path + "/config/config.json"
+    print("Running with config: %s" % conf_file)
+    with open(conf_file) as f:
         confs: dict[str, Any] = json.load(f)
 
     threads: list[Thread] = []

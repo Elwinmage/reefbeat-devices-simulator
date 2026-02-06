@@ -1,7 +1,7 @@
 {
   "hw_model": "RSDOSE4",
   "hw_type": "reef-dosing",
-  "hwid": "983109083961",
-  "name": "SIMU-RSDOSE4-1210347614",
+  "hwid": "__REEFBEAT_HW_ID__",
+  "name": "SIMU-__REEFBEAT_NAME__",
   "status": "unpaired"
 }

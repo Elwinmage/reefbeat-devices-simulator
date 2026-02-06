@@ -8,7 +8,7 @@
       "daily_doses": 3,
       "doses_today": 1,
       "is_food_head": false,
-      "manual_dosed_today": 50,
+      "manual_dosed_today": 0,
       "missed_dose": {
         "missed_volume": 0,
         "total_volume": 0

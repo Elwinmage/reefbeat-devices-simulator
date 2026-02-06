@@ -248,7 +248,9 @@ SANITIZE_MAP_FILENAME: Final[str] = ".reefbeat_sanitize_map.json"
 # Debugging aid:
 # - When True, sanitize-map keys are SHA256 digests of raw values.
 # - When False (default), sanitize-map keys are the raw values themselves (easier to debug, contains PII).
-SANITIZE_MAP_USE_HASH_KEYS: Final[bool] = os.getenv("REEFBEAT_SANITIZE_MAP_USE_HASH_KEYS", "0") in {
+SANITIZE_MAP_USE_HASH_KEYS: Final[bool] = os.getenv(
+    "REEFBEAT_SANITIZE_MAP_USE_HASH_KEYS", "0"
+) in {
     "1",
     "true",
     "True",
@@ -259,7 +261,9 @@ SANITIZE_MAP_USE_HASH_KEYS: Final[bool] = os.getenv("REEFBEAT_SANITIZE_MAP_USE_H
 _UUID_RE: Final[re.Pattern[str]] = re.compile(r"uuid:[0-9a-zA-Z\-]+")
 
 # LED model strings look like RSLED90 / RSLED160 / RSLED115.
-_RSLED_MODEL_RE: Final[re.Pattern[str]] = re.compile(r"\bRSLED(?P<size>\d+)\b", re.IGNORECASE)
+_RSLED_MODEL_RE: Final[re.Pattern[str]] = re.compile(
+    r"\bRSLED(?P<size>\d+)\b", re.IGNORECASE
+)
 
 # Override maps for LED generation inference.
 #
@@ -278,7 +282,9 @@ _RSLED_MODEL_RE: Final[re.Pattern[str]] = re.compile(r"\bRSLED(?P<size>\d+)\b", 
 LED_GEN_OVERRIDE_BY_HWID: Final[dict[str, str]] = {}
 LED_GEN_OVERRIDE_BY_NAME: Final[dict[str, str]] = {}
 
-_EMAIL_RE: Final[re.Pattern[str]] = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+_EMAIL_RE: Final[re.Pattern[str]] = re.compile(
+    r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"
+)
 _PHONE_RE: Final[re.Pattern[str]] = re.compile(r"\+\d{7,15}")
 _RAW_UUID_RE: Final[re.Pattern[str]] = re.compile(
     r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
@@ -424,7 +430,9 @@ def load_sanitize_map(path: Path) -> SanitizeMap:
         next_ip_host=int(obj.get("next_ip_host") or 10),
         next_ssid_suffix=int(obj.get("next_ssid_suffix") or 1),
         next_device_suffix=int(obj.get("next_device_suffix") or 1),
-        next_device_suffix_by_prefix=_d_int_str_keys(obj.get("next_device_suffix_by_prefix")),
+        next_device_suffix_by_prefix=_d_int_str_keys(
+            obj.get("next_device_suffix_by_prefix")
+        ),
     )
 
 
@@ -855,7 +863,9 @@ def print_devices_table(rows: list[dict[str, Any]]) -> None:
         print(fmt_row(row))
 
 
-def cloud_list_devices(username: str, password: str, *, timeout_s: int) -> list[dict[str, Any]]:
+def cloud_list_devices(
+    username: str, password: str, *, timeout_s: int
+) -> list[dict[str, Any]]:
     """List devices from the ReefBeat cloud.
 
     Args:
@@ -958,7 +968,11 @@ def scan_network_for_devices(
 
     net = ipaddress.ip_network(cidr, strict=False)
     # Guard against accidentally scanning huge networks (docker /16, etc.).
-    host_count = int(max(0, net.num_addresses - 2)) if getattr(net, "version", 4) == 4 else int(net.num_addresses)
+    host_count = (
+        int(max(0, net.num_addresses - 2))
+        if getattr(net, "version", 4) == 4
+        else int(net.num_addresses)
+    )
     if host_count > max_hosts and not allow_large:
         raise ValueError(
             f"Refusing to scan {net} ({host_count} hosts). "
@@ -981,9 +995,21 @@ def scan_network_for_devices(
             name = payload.get("name")
             hwid = payload.get("hwid")
             # Different firmware revisions use different key names.
-            model = payload.get("model") if payload.get("model") is not None else payload.get("hw_model")
-            fw = payload.get("firmware_version") if payload.get("firmware_version") is not None else payload.get("fw")
-            dtype = payload.get("type") if payload.get("type") is not None else payload.get("hw_type")
+            model = (
+                payload.get("model")
+                if payload.get("model") is not None
+                else payload.get("hw_model")
+            )
+            fw = (
+                payload.get("firmware_version")
+                if payload.get("firmware_version") is not None
+                else payload.get("fw")
+            )
+            dtype = (
+                payload.get("type")
+                if payload.get("type") is not None
+                else payload.get("hw_type")
+            )
 
             if not isinstance(name, str) or not name:
                 return None
@@ -1088,8 +1114,12 @@ def build_scan_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow scanning very large CIDRs (use with care)",
     )
-    p.add_argument("--username", help=f"Cloud username (optional; overrides .env {ENV_USERNAME})")
-    p.add_argument("--password", help=f"Cloud password (optional; overrides .env {ENV_PASSWORD})")
+    p.add_argument(
+        "--username", help=f"Cloud username (optional; overrides .env {ENV_USERNAME})"
+    )
+    p.add_argument(
+        "--password", help=f"Cloud password (optional; overrides .env {ENV_PASSWORD})"
+    )
     p.add_argument(
         "--timeout",
         type=int,
@@ -1117,11 +1147,17 @@ def cmd_scan(argv: list[str]) -> int:
     args = p.parse_args(argv)
 
     cidrs = list(args.cidr or [])
-    creds = None if args.no_cloud else resolve_cloud_creds(args.username, args.password, Path(".env"))
+    creds = (
+        None
+        if args.no_cloud
+        else resolve_cloud_creds(args.username, args.password, Path(".env"))
+    )
 
     if not cidrs:
         if not creds:
-            logger.info("Provide --cidr for LAN scan, or set cloud creds in .env / --username/--password")
+            logger.info(
+                "Provide --cidr for LAN scan, or set cloud creds in .env / --username/--password"
+            )
             return 2
         logger.info("Cloud listing (from cloud; does not probe LAN)")
         devices = cloud_list_devices(creds[0], creds[1], timeout_s=int(args.timeout))
@@ -1143,7 +1179,9 @@ def cmd_scan(argv: list[str]) -> int:
 
     if creds:
         logger.info("Enriching scan results from cloud...")
-        enrich_devices_from_cloud(rows, username=creds[0], password=creds[1], timeout_s=int(args.timeout))
+        enrich_devices_from_cloud(
+            rows, username=creds[0], password=creds[1], timeout_s=int(args.timeout)
+        )
 
     print_devices_table(rows)
     return 0
@@ -1296,7 +1334,9 @@ def iter_urls(device_type: str) -> list[str]:
         return [*BASE_URLS, *LED_URLS]
 
     if device_type not in TYPE_MAP:
-        raise ValueError(f"Unsupported TYPE {device_type!r}. Use one of {sorted(available_device_types())}")
+        raise ValueError(
+            f"Unsupported TYPE {device_type!r}. Use one of {sorted(available_device_types())}"
+        )
     return [*BASE_URLS, *TYPE_MAP[device_type]]
 
 
@@ -1397,8 +1437,16 @@ def device_type_from_device_info_payload(payload: Mapping[str, Any]) -> str:
     """Convert a /device-info payload into a fixture folder type."""
 
     # Prefer hw_* keys; fall back to older/newer key names when present.
-    hw_type = payload.get("hw_type") if payload.get("hw_type") is not None else payload.get("type")
-    hw_model = payload.get("hw_model") if payload.get("hw_model") is not None else payload.get("model")
+    hw_type = (
+        payload.get("hw_type")
+        if payload.get("hw_type") is not None
+        else payload.get("type")
+    )
+    hw_model = (
+        payload.get("hw_model")
+        if payload.get("hw_model") is not None
+        else payload.get("model")
+    )
     hw_rev = payload.get("hw_revision")
     name = payload.get("name")
     hwid = payload.get("hwid")
@@ -1424,7 +1472,9 @@ def device_type_from_device_info_payload(payload: Mapping[str, Any]) -> str:
             evidence_parts.append(hwid)
         evidence_s = " ".join(evidence_parts).upper()
 
-        led = _detect_led_variant(hw_model_s, hw_rev, evidence_s=evidence_s, override_gen=override_gen)
+        led = _detect_led_variant(
+            hw_model_s, hw_rev, evidence_s=evidence_s, override_gen=override_gen
+        )
         return led or "LED"
     if hw_type_s == "reef-run":
         return "RUN"
@@ -1463,7 +1513,9 @@ def device_type_from_device_info_payload(payload: Mapping[str, Any]) -> str:
         elif isinstance(name, str) and name and name in LED_GEN_OVERRIDE_BY_NAME:
             override_gen = LED_GEN_OVERRIDE_BY_NAME[name]
 
-        led = _detect_led_variant(hw_model_s, hw_rev, evidence_s=evidence_s, override_gen=override_gen)
+        led = _detect_led_variant(
+            hw_model_s, hw_rev, evidence_s=evidence_s, override_gen=override_gen
+        )
         return led or "LED"
     if "RUN" in hw_model_s:
         return "RUN"
@@ -1472,7 +1524,9 @@ def device_type_from_device_info_payload(payload: Mapping[str, Any]) -> str:
     if "MAT" in hw_model_s:
         return "MAT"
 
-    raise RuntimeError(f"Could not detect type (hw_type={hw_type!r}, hw_model={hw_model!r})")
+    raise RuntimeError(
+        f"Could not detect type (hw_type={hw_type!r}, hw_model={hw_model!r})"
+    )
 
 
 def format_json_bytes(data: bytes) -> bytes:
@@ -1582,7 +1636,9 @@ def available_device_types() -> list[str]:
     return sorted(out)
 
 
-def sanitize_local_payload(url: str, payload: JsonValue, smap: SanitizeMap) -> JsonValue:
+def sanitize_local_payload(
+    url: str, payload: JsonValue, smap: SanitizeMap
+) -> JsonValue:
     """Sanitize a local-device JSON payload.
 
     Args:
@@ -1660,7 +1716,9 @@ def rewrite_local_download(
     return (json.dumps(json_payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
-def snapshot_local_device(ip: str, device_type: str, out_root: Path, timeout: int, *, save_raw: bool = False) -> None:
+def snapshot_local_device(
+    ip: str, device_type: str, out_root: Path, timeout: int, *, save_raw: bool = False
+) -> None:
     """Snapshot a local device to a fixture tree.
 
     Args:
@@ -1717,7 +1775,9 @@ def snapshot_local_device(ip: str, device_type: str, out_root: Path, timeout: in
                 if isinstance(hwid, str) and hwid and isinstance(name, str) and name:
                     old_id = DeviceIdentity(hwid=hwid.lower(), name=name)
 
-        data = rewrite_local_download(data, ip, url, smap=smap, device_hwid=(old_id.hwid if old_id else None))
+        data = rewrite_local_download(
+            data, ip, url, smap=smap, device_hwid=(old_id.hwid if old_id else None)
+        )
 
         data_path = d / "data"
         data_path.write_bytes(data)
@@ -1831,16 +1891,30 @@ def _deep_key_sanitize(value: JsonValue, smap: SanitizeMap) -> JsonValue:
                     out[k] = SANITIZED_MAC if k == "mac" else SANITIZED_BSSID
                 continue
             if k == "ip_address":
-                out[k] = map_ip_address(v, smap) if isinstance(v, str) and v else SANITIZED_IP_ADDRESS
+                out[k] = (
+                    map_ip_address(v, smap)
+                    if isinstance(v, str) and v
+                    else SANITIZED_IP_ADDRESS
+                )
                 continue
             if k == "ssid":
-                out[k] = map_ssid(v, smap) if isinstance(v, str) and v else SANITIZED_SSID
+                out[k] = (
+                    map_ssid(v, smap) if isinstance(v, str) and v else SANITIZED_SSID
+                )
                 continue
             if k == "hwid":
-                out[k] = map_device_hwid(v, smap) if isinstance(v, str) and v else SANITIZED_HWID
+                out[k] = (
+                    map_device_hwid(v, smap)
+                    if isinstance(v, str) and v
+                    else SANITIZED_HWID
+                )
                 continue
             if k == "serial_code":
-                out[k] = map_serial_code(v, smap) if isinstance(v, str) and v else SANITIZED_SERIAL_CODE
+                out[k] = (
+                    map_serial_code(v, smap)
+                    if isinstance(v, str) and v
+                    else SANITIZED_SERIAL_CODE
+                )
                 continue
             out[k] = _deep_key_sanitize(v, smap)
         return out
@@ -1880,7 +1954,9 @@ def _sanitize_cloud_aquarium(payload: JsonValue, smap: SanitizeMap) -> JsonValue
                 obj["user_uid"] = map_user_uid(raw_user_uid, smap)
             else:
                 obj["user_uid"] = cast(str, SANITIZED_USER["uid"])
-            obj["name"] = f"{SANITIZED_AQUARIUM_NAME} {max(1, int(mapped_id) - (SANITIZED_AQUARIUM_ID - 1))}"
+            obj["name"] = (
+                f"{SANITIZED_AQUARIUM_NAME} {max(1, int(mapped_id) - (SANITIZED_AQUARIUM_ID - 1))}"
+            )
             obj["system_model"] = SANITIZED_SYSTEM_MODEL
             out_list.append(_deep_key_sanitize(_deep_redact(obj), smap))
         return out_list
@@ -1904,7 +1980,9 @@ def _sanitize_cloud_aquarium(payload: JsonValue, smap: SanitizeMap) -> JsonValue
             obj["user_uid"] = map_user_uid(raw_user_uid2, smap)
         else:
             obj["user_uid"] = cast(str, SANITIZED_USER["uid"])
-        obj["name"] = f"{SANITIZED_AQUARIUM_NAME} {max(1, int(mapped_id2) - (SANITIZED_AQUARIUM_ID - 1))}"
+        obj["name"] = (
+            f"{SANITIZED_AQUARIUM_NAME} {max(1, int(mapped_id2) - (SANITIZED_AQUARIUM_ID - 1))}"
+        )
         obj["system_model"] = SANITIZED_SYSTEM_MODEL
         return _deep_key_sanitize(_deep_redact(cast(JsonValue, obj)), smap)
 
@@ -1947,13 +2025,29 @@ def _sanitize_cloud_device(payload: JsonValue, smap: SanitizeMap) -> JsonValue:
             mac = obj_in.get("mac")
             ssid = obj_in.get("ssid")
 
-            obj["bssid"] = map_bssid(bssid, smap) if isinstance(bssid, str) and bssid else SANITIZED_BSSID
-            obj["hwid"] = map_device_hwid(hwid, smap) if isinstance(hwid, str) and hwid else SANITIZED_HWID
-            obj["ip_address"] = (
-                map_ip_address(ip_addr, smap) if isinstance(ip_addr, str) and ip_addr else SANITIZED_IP_ADDRESS
+            obj["bssid"] = (
+                map_bssid(bssid, smap)
+                if isinstance(bssid, str) and bssid
+                else SANITIZED_BSSID
             )
-            obj["mac"] = map_mac(mac, smap) if isinstance(mac, str) and mac else SANITIZED_MAC
-            obj["ssid"] = map_ssid(ssid, smap) if isinstance(ssid, str) and ssid else SANITIZED_SSID
+            obj["hwid"] = (
+                map_device_hwid(hwid, smap)
+                if isinstance(hwid, str) and hwid
+                else SANITIZED_HWID
+            )
+            obj["ip_address"] = (
+                map_ip_address(ip_addr, smap)
+                if isinstance(ip_addr, str) and ip_addr
+                else SANITIZED_IP_ADDRESS
+            )
+            obj["mac"] = (
+                map_mac(mac, smap) if isinstance(mac, str) and mac else SANITIZED_MAC
+            )
+            obj["ssid"] = (
+                map_ssid(ssid, smap)
+                if isinstance(ssid, str) and ssid
+                else SANITIZED_SSID
+            )
             out_list2.append(_deep_key_sanitize(_deep_redact(obj), smap))
         return out_list2
 
@@ -1980,20 +2074,38 @@ def _sanitize_cloud_device(payload: JsonValue, smap: SanitizeMap) -> JsonValue:
         mac2 = obj_in2.get("mac")
         ssid2 = obj_in2.get("ssid")
 
-        obj["bssid"] = map_bssid(bssid2, smap) if isinstance(bssid2, str) and bssid2 else SANITIZED_BSSID
-        obj["hwid"] = map_device_hwid(hwid2, smap) if isinstance(hwid2, str) and hwid2 else SANITIZED_HWID
-        obj["ip_address"] = (
-            map_ip_address(ip_addr2, smap) if isinstance(ip_addr2, str) and ip_addr2 else SANITIZED_IP_ADDRESS
+        obj["bssid"] = (
+            map_bssid(bssid2, smap)
+            if isinstance(bssid2, str) and bssid2
+            else SANITIZED_BSSID
         )
-        obj["mac"] = map_mac(mac2, smap) if isinstance(mac2, str) and mac2 else SANITIZED_MAC
-        obj["ssid"] = map_ssid(ssid2, smap) if isinstance(ssid2, str) and ssid2 else SANITIZED_SSID
+        obj["hwid"] = (
+            map_device_hwid(hwid2, smap)
+            if isinstance(hwid2, str) and hwid2
+            else SANITIZED_HWID
+        )
+        obj["ip_address"] = (
+            map_ip_address(ip_addr2, smap)
+            if isinstance(ip_addr2, str) and ip_addr2
+            else SANITIZED_IP_ADDRESS
+        )
+        obj["mac"] = (
+            map_mac(mac2, smap) if isinstance(mac2, str) and mac2 else SANITIZED_MAC
+        )
+        obj["ssid"] = (
+            map_ssid(ssid2, smap)
+            if isinstance(ssid2, str) and ssid2
+            else SANITIZED_SSID
+        )
 
         return _deep_key_sanitize(_deep_redact(cast(JsonValue, obj)), smap)
 
     return payload
 
 
-def sanitize_cloud_payload(path: str, payload: JsonValue, smap: SanitizeMap) -> JsonValue:
+def sanitize_cloud_payload(
+    path: str, payload: JsonValue, smap: SanitizeMap
+) -> JsonValue:
     """Sanitize a cloud payload.
 
     Args:
@@ -2178,7 +2290,14 @@ def resolve_cloud_creds(
     return None
 
 
-def snapshot_cloud(out_root: Path, timeout: int, username: str, password: str, *, save_raw: bool = False) -> bool:
+def snapshot_cloud(
+    out_root: Path,
+    timeout: int,
+    username: str,
+    password: str,
+    *,
+    save_raw: bool = False,
+) -> bool:
     """Export cloud endpoints into a fixture tree.
 
     Args:
@@ -2233,7 +2352,11 @@ def snapshot_cloud(out_root: Path, timeout: int, username: str, password: str, *
 
     save_sanitize_map(map_path, smap)
 
-    meta: dict[str, Any] = {"exported_at": int(time.time()), "server": CLOUD_SERVER_ADDR, "endpoints": CLOUD_URLS}
+    meta: dict[str, Any] = {
+        "exported_at": int(time.time()),
+        "server": CLOUD_SERVER_ADDR,
+        "endpoints": CLOUD_URLS,
+    }
     (out_root / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return True
 
@@ -2273,17 +2396,29 @@ def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "scan":
         return cmd_scan(sys.argv[2:])
 
-    ap = argparse.ArgumentParser(description="Create simulator fixture tree from a ReefBeat device (+ optional cloud).")
+    ap = argparse.ArgumentParser(
+        description="Create simulator fixture tree from a ReefBeat device (+ optional cloud)."
+    )
     ap.add_argument("--ip", help="Device IP address (required unless --cloud)")
     ap.add_argument(
         "--type",
         choices=available_device_types(),
         help="Device type (optional; auto-detected from /device-info when omitted)",
     )
-    ap.add_argument("--cloud", action="store_true", help="Only export cloud data (skip local)")
-    ap.add_argument("--out-root", default="devices", help="Base output directory (default: ./devices)")
-    ap.add_argument("--username", help=f"Cloud username (optional; overrides .env {ENV_USERNAME})")
-    ap.add_argument("--password", help=f"Cloud password (optional; overrides .env {ENV_PASSWORD})")
+    ap.add_argument(
+        "--cloud", action="store_true", help="Only export cloud data (skip local)"
+    )
+    ap.add_argument(
+        "--out-root",
+        default="devices",
+        help="Base output directory (default: ./devices)",
+    )
+    ap.add_argument(
+        "--username", help=f"Cloud username (optional; overrides .env {ENV_USERNAME})"
+    )
+    ap.add_argument(
+        "--password", help=f"Cloud password (optional; overrides .env {ENV_PASSWORD})"
+    )
     ap.add_argument(
         "--timeout",
         type=int,
@@ -2333,7 +2468,13 @@ def main() -> int:
     out_dir = infer_out_dir(out_root, device_type, cloud=False)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    snapshot_local_device(args.ip, device_type, out_dir, timeout=int(args.timeout), save_raw=bool(args.save_raw))
+    snapshot_local_device(
+        args.ip,
+        device_type,
+        out_dir,
+        timeout=int(args.timeout),
+        save_raw=bool(args.save_raw),
+    )
 
     return 0
 
