@@ -4,6 +4,6 @@
   "hw_type": "reef-mat",
   "hwid": "dd957a828b11",
   "message": "get device info successfully",
-  "name": "RSMAT-0000000001",
+  "name": "SIMU-RSMAT-0000000001",
   "success": true
 }

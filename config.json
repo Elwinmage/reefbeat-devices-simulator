@@ -47,7 +47,7 @@
       ]
     },
     {
-      "enabled": false,
+      "enabled": true,
       "name": "RSATO",
       "base_url": "devices/ATO",
       "ip": "192.168.0.241",
@@ -59,7 +59,7 @@
       "post_actions": []
     },
     {
-      "enabled": false,
+      "enabled": true,
       "name": "LED_G1_160",
       "base_url": "devices/LED_G1_160",
       "ip": "192.168.0.242",
@@ -71,7 +71,7 @@
       "post_actions": []
     },
     {
-      "enabled": false,
+      "enabled": true,
       "name": "LED_G2",
       "base_url": "devices/LED_G2_115",
       "ip": "192.168.0.243",
@@ -83,7 +83,7 @@
       "post_actions": []
     },
     {
-      "enabled": false,
+      "enabled": true,
       "name": "LED_G1_90",
       "base_url": "devices/LED_G1_90",
       "ip": "192.168.0.244",

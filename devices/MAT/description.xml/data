@@ -9,7 +9,7 @@
     <board>esp32</board>
     <framework>i</framework>
     <deviceType>reef-mat</deviceType>
-    <friendlyName>RSMAT-3632934213</friendlyName>
+    <friendlyName>SIMU-RSMAT-3632934213</friendlyName>
     <presentationURL>/</presentationURL>
     <serialNumber>345f452d8ad8</serialNumber>
     <modelName>RSMAT</modelName>

@@ -6,7 +6,7 @@
   "channel": 2,
   "dns": "192.168.0.1",
   "gateway": "192.168.0.1",
-  "ip": "192.168.0.251",
+  "ip": "__REEFBEAT_DEVICE_IP__",
   "isConnected": true,
   "is_connected": true,
   "mac": "1C:69:20:2A:5A:50",

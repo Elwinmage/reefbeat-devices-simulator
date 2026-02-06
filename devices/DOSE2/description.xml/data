@@ -7,7 +7,7 @@
   <URLBase>http://10.0.0.15:80/</URLBase>
   <device>
     <deviceType>reef-dosing</deviceType>
-    <friendlyName>RSDOSE2-470062598</friendlyName>
+    <friendlyName>SIMU-RSDOSE2-470062598</friendlyName>
     <presentationURL>/</presentationURL>
     <serialNumber>90150696041c</serialNumber>
     <modelName>RSDOSE2</modelName>

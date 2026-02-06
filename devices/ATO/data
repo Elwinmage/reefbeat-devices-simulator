@@ -15,5 +15,5 @@
   "used_bytes": 0,
   "uuid": "d0ef760d2096",
   "wifi_enabled": true,
-  "wifi_ip": "192.168.0.65"
+  "wifi_ip": "__REEFBEAT_DEVICE_IP__"
 }

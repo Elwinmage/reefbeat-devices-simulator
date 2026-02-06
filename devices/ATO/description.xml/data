@@ -4,15 +4,15 @@
     <major>1</major>
     <minor>0</minor>
   </specVersion>
-  <URLBase>http://192.168.0.194:80/</URLBase>
+  <URLBase>http://__REEFBEAT_DEVICE_IP__:80/</URLBase>
   <device>
     <board>esp32</board>
     <framework>i</framework>
     <deviceType>reef-lights</deviceType>
-    <friendlyName>ATO-5465458396</friendlyName>
+    <friendlyName>SIMU-ATO-5465458396</friendlyName>
     <presentationURL>/</presentationURL>
     <serialNumber>cc7b5ca3167c</serialNumber>
-    <modelName>RSLED160</modelName>
+    <modelName>RSATO+</modelName>
     <modelDescription/>
     <modelNumber>CC:7B:5C:A3:16:7C</modelNumber>
     <modelURL>https://www.reef-beat.com</modelURL>
