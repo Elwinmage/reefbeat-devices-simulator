@@ -6,7 +6,7 @@
   "connected": true,
   "dns": "10.0.10.125",
   "gateway": "10.0.0.1",
-  "ip": "10.0.0.15",
+  "ip": "__REEFBEAT_DEVICE_IP__",
   "mac": "02:00:00:49:43:B2",
   "phy_mode": "802.11n",
   "real_phy_mode": "802.11n",

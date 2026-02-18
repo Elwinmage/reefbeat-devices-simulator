@@ -1,0 +1,136 @@
+{
+  "devices": [
+    {
+      "enabled": true,
+      "name": "RSDOSE4-1",
+      "base_url": "devices/DOSE4",
+      "ip": "192.168.0.240",
+      "port": 80,
+      "actions": "config/devices/rs-dose4.json",
+      "modifiers": [
+        {
+          "name": "decrease_volume",
+          "params": {
+            "head_1": {
+              "supplement": "7d67412c-fde0-44d4-882a-dc8746fd4acb",
+	      "initial_container_volume":100,
+              "daily_doses": 3,
+              "daily_dose":  18
+            },
+            "head_2": {
+              "supplement": "76830db3-a0bd-459a-9974-76a57d026893",
+	      "initial_container_volume":100,
+              "daily_doses": 3,
+              "daily_dose": 20
+            },
+            "head_3": {
+              "supplement": "f524734e-8651-496e-b09b-640b40fc8bab",
+	      "initial_container_volume":100,
+              "daily_doses": 5,
+              "daily_dose": 10
+            },
+            "head_4": {
+              "supplement": "bf9a7da3-741b-4c1d-8542-d9344a95fb70",
+	      "initial_container_volume":100,
+              "daily_doses": 4,
+              "daily_dose": 20
+            }
+          }
+        }
+      ]
+    },
+    {
+      "enabled": true,
+      "name": "RSDOSE4-2",
+      "base_url": "devices/DOSE4",
+      "ip": "192.168.0.241",
+      "port": 80,
+      "actions": "config/devices/rs-dose4.json",
+      "modifiers": [
+        {
+          "name": "decrease_volume",
+          "params": {
+            "head_1": {
+              "supplement": "7d67412c-fde0-44d4-882a-dc8746fd4acb",
+	      "initial_container_volume":100,
+              "daily_doses": 2,
+              "daily_dose":  10
+            },
+            "head_2": {
+              "supplement": "76830db3-a0bd-459a-9974-76a57d026893",
+	      "initial_container_volume":100,
+              "daily_doses": 3,
+              "daily_dose": 20
+            },
+            "head_3": {
+              "supplement": "f524734e-8651-496e-b09b-640b40fc8bab",
+	      "initial_container_volume":100,
+              "daily_doses": 5,
+              "daily_dose": 10
+            },
+            "head_4": {
+              "supplement": "bf9a7da3-741b-4c1d-8542-d9344a95fb70",
+	      "initial_container_volume":100,
+              "daily_doses": 4,
+              "daily_dose": 20
+            }
+          }
+        }
+      ]
+    },
+    {
+      "enabled": true,
+      "name": "RSDOSE2-3",
+      "base_url": "devices/DOSE2",
+      "ip": "192.168.0.242",
+      "port": 80,
+      "actions": "config/devices/rs-dose4.json",
+      "modifiers": [
+        {
+          "name": "decrease_volume",
+          "params": {
+            "head_1": {
+              "supplement": "7d67412c-fde0-44d4-882a-dc8746fd4acb",
+	      "initial_container_volume":100,
+              "daily_doses": 2,
+              "daily_dose":  18
+            },
+            "head_2": {
+              "supplement": "76830db3-a0bd-459a-9974-76a57d026893",
+	      "initial_container_volume":100,
+              "daily_doses": 3,
+              "daily_dose": 20
+            }
+          }
+        }
+      ]
+    },
+    {
+      "enabled": true,
+      "name": "RSDOSE2-1",
+      "base_url": "devices/DOSE2",
+      "ip": "192.168.0.243",
+      "port": 80,
+      "actions": "config/devices/rs-dose2.json",
+      "modifiers": [
+        {
+          "name": "decrease_volume",
+          "params": {
+            "head_1": {
+              "supplement": "7d67412c-fde0-44d4-882a-dc8746fd4acb",
+	      "initial_container_volume":100,
+              "daily_doses": 2,
+              "daily_dose":  18
+            },
+            "head_2": {
+              "supplement": "76830db3-a0bd-459a-9974-76a57d026893",
+	      "initial_container_volume":100,
+              "daily_doses": 5,
+              "daily_dose": 10
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

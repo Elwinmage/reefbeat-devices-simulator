@@ -1,0 +1,8 @@
+{
+  "type": "RSDOSE2",
+  "access": {
+    "no_GET": [],
+    "PUT": []
+  },
+  "post_actions": []
+}

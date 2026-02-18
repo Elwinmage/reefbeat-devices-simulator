@@ -1,0 +1,42 @@
+{
+  "type": "RSDOSE4",
+  "access": {
+    "no_GET": [],
+    "PUT": [
+      "/head/1/settings",
+      "/head/2/settings",
+      "/head/3/settings",
+      "/head/4/settings"
+    ]
+  },
+  "post_actions": [
+    {
+      "request": "/head/4/manual",
+      "action": {
+        "target": "/dashboard",
+        "action": "{'heads':{'4':{'manual_dosed_today':self.server._db['/dashboard']['data']['heads']['4']['manual_dosed_today']+r_data['volume']}}}"
+      }
+    },
+    {
+      "request": "/head/3/manual",
+      "action": {
+        "target": "/dashboard",
+        "action": "{'heads':{'3':{'manual_dosed_today':self.server._db['/dashboard']['data']['heads']['3']['manual_dosed_today']+r_data['volume']}}}"
+      }
+    },
+    {
+      "request": "/head/2/manual",
+      "action": {
+        "target": "/dashboard",
+        "action": "{'heads':{'2':{'manual_dosed_today':self.server._db['/dashboard']['data']['heads']['2']['manual_dosed_today']+r_data['volume']}}}"
+      }
+    },
+    {
+      "request": "/head/1/manual",
+      "action": {
+        "target": "/dashboard",
+        "action": "{'heads':{'1':{'manual_dosed_today':self.server._db['/dashboard']['data']['heads']['1']['manual_dosed_today']+r_data['volume']}}}"
+      }
+    }
+  ]
+}

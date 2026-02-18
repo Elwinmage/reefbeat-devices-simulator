@@ -1,0 +1,8 @@
+{
+  "type": "RSLED_G1",
+  "access": {
+    "no_GET": [],
+    "PUT": []
+  },
+  "post_actions": []
+}
