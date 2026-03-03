@@ -1,0 +1,10 @@
+{
+  "type": "RSMAT",
+  "access": {
+    "no_GET": [],
+    "PUT": [
+    ]
+  },
+  "post_actions": [
+  ]
+}

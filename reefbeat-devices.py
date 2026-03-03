@@ -211,8 +211,17 @@ class MyServer(HTTPServer):
                 data = self._db[path]["data"]
                 if hasattr(self.config, "modifiers") and self.config.modifiers:
                     for func in self.config.modifiers:
-                        _ext = getattr(function_extension, func.name)
-                        data = _ext(path, data, func.params, self._ctx)
+                        if (
+                            not getattr(func, "only_startup", False)
+                            or not getattr(func, "run_once", False)
+                        ) and (
+                            getattr(func.params, "path", False)
+                            and path == func.params.path
+                        ):
+                            setattr(func, "run_once", True)
+                            _ext = getattr(function_extension, func.name)
+                            data = _ext(path, data, func.params, self._ctx)
+
                 return data
             else:
                 return ""

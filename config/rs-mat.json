@@ -1,0 +1,31 @@
+{
+  "devices": [
+    {
+      "enabled": true,
+      "name": "RSMAT_LEFT",
+      "base_url": "devices/MAT",
+      "ip": "192.168.0.245",
+      "port": 80,
+      "actions":"config/devices/rs-mat.json"
+    },
+    {
+      "enabled": true,
+      "name": "RSMAT_RIGHT",
+      "base_url": "devices/MAT",
+      "ip": "192.168.0.246",
+      "port": 80,
+      "actions":"config/devices/rs-mat.json",
+      "modifiers": [
+	{
+	  "name": "set_value",
+	  "only_startup":true,
+	  "params": {
+	    "path":"/configuration",
+	    "name":"position",
+	    "value":"right"
+	  }
+	}
+      ]
+    }
+  ]
+}

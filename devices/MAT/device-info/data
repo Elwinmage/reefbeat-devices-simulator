@@ -2,8 +2,8 @@
   "hw_model": "RSMAT",
   "hw_revision": "v0.4_24G",
   "hw_type": "reef-mat",
-  "hwid": "dd957a828b11",
+  "hwid": "__REEFBEAT_HW_ID__",
   "message": "get device info successfully",
-  "name": "SIMU-RSMAT-0000000001",
+  "name": "SIMU-__REEFBEAT_NAME__",
   "success": true
 }
