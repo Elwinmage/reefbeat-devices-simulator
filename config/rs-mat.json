@@ -24,6 +24,44 @@
 	    "name":"position",
 	    "value":"right"
 	  }
+	},
+	{
+	  "name": "set_value",
+	  "only_startup":true,
+	  "params": {
+	    "path":"/dashboard",
+	    "name":"remaining_length",
+	    "value":3500
+	  }
+	},
+	{
+	  "name": "set_value",
+	  "only_startup":true,
+	  "params": {
+	    "path":"/dashboard",
+	    "name":"total_usage",
+	    "value":0
+	  }
+	},
+	{
+	  "name": "decrease_value",
+	  "params": {
+	    "path":"/dashboard",
+	    "name":"remaining_length",
+	    "offset":100,
+	    "init_value":3500,
+	    "limit": 0
+	  }
+	},
+	{
+	  "name": "increase_value",
+	  "params": {
+	    "path":"/dashboard",
+	    "name":"total_usage",
+	    "offset":100,
+	    "init_value":0,
+	    "limit": 3500
+	  }
 	}
       ]
     }

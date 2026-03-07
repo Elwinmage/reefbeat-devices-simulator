@@ -3,7 +3,21 @@ from typing import Any, Dict
 
 def set_value(path: str, data: Dict[str, Any], params: Any, ctx: Any):
     if path == params.path:
-        print("Setting %s to %s for %s" % (params.value, params.name, path))
         data[params.name] = params.value
-    else:
-        return None
+    return data
+
+
+def increase_value(path: str, data: Dict[str, Any], params: Any, ctx: Any):
+    if path == params.path:
+        data[params.name] += params.offset
+        if data[params.name] > params.limit:
+            data[params.name] = params.init_value
+    return data
+
+
+def decrease_value(path: str, data: Dict[str, Any], params: Any, ctx: Any):
+    if path == params.path:
+        data[params.name] -= params.offset
+        if data[params.name] < params.limit:
+            data[params.name] = params.init_value
+    return data
