@@ -1,0 +1,42 @@
+{
+  "devices": [
+    {
+      "enabled": true,
+      "name": "RSRUN_1",
+      "base_url": "devices/RUN",
+      "ip": "192.168.0.240",
+      "port": 80,
+      "actions":"config/devices/rs-run.json",
+      "modifiers": [
+      ]
+    },
+    {
+      "enabled": true,
+      "name": "RSRUN_2",
+      "base_url": "devices/RUN",
+      "ip": "192.168.0.241",
+      "port": 80,
+      "actions":"config/devices/rs-run.json",
+      "modifiers": [
+	{
+	  "name": "set_value",
+	  "only_startup":true,
+	  "params": {
+	    "path":"/dashboard",
+	    "name":"pump_1/type",
+	    "value": "skimmer"
+	  }
+	},
+	{
+	  "name": "set_value",
+	  "only_startup":true,
+	  "params": {
+	    "path":"/dashboard",
+	    "name":"pump_2/type",
+	    "value": "return"
+	  }
+	}
+      ]
+    }
+  ]
+}

@@ -6,7 +6,18 @@
       "base_url": "devices/MAT",
       "ip": "192.168.0.245",
       "port": 80,
-      "actions":"config/devices/rs-mat.json"
+      "actions":"config/devices/rs-mat.json",
+      "modifiers": [
+	{
+	  "name": "set_value",
+	  "only_startup":true,
+	  "params": {
+	    "path":"/dashboard",
+	    "name":"is_ec_sensor_connected",
+	    "value":true
+	  }
+	}
+      ]
     },
     {
       "enabled": true,
@@ -16,6 +27,24 @@
       "port": 80,
       "actions":"config/devices/rs-mat.json",
       "modifiers": [
+	{
+	  "name": "set_value",
+	  "only_startup":true,
+	  "params": {
+	    "path":"/dashboard",
+	    "name":"unclean_sensor",
+	    "value":false
+	  }
+	},
+	{
+	  "name": "set_value",
+	  "only_startup":true,
+	  "params": {
+	    "path":"/mode",
+	    "name":"mode",
+	    "value":"auto"
+	  }
+	},
 	{
 	  "name": "set_value",
 	  "only_startup":true,
@@ -48,7 +77,7 @@
 	  "params": {
 	    "path":"/dashboard",
 	    "name":"remaining_length",
-	    "offset":100,
+	    "offset":875,
 	    "init_value":3500,
 	    "limit": 0
 	  }
@@ -58,7 +87,7 @@
 	  "params": {
 	    "path":"/dashboard",
 	    "name":"total_usage",
-	    "offset":100,
+	    "offset":875,
 	    "init_value":0,
 	    "limit": 3500
 	  }

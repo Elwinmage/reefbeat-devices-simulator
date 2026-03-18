@@ -4,7 +4,7 @@
     <major>1</major>
     <minor>0</minor>
   </specVersion>
-  <URLBase>http://__REEFBEAT_DEVICE8_IP__:80/</URLBase>
+  <URLBase>http://__REEFBEAT_DEVICE_IP__:80/</URLBase>
   <device>
     <board>esp32</board>
     <framework>i</framework>
