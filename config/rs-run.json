@@ -32,6 +32,15 @@
 	  "only_startup":true,
 	  "params": {
 	    "path":"/dashboard",
+	    "name":"pump_1/sensor_controlled",
+	    "value": false
+	  }
+	},
+	{
+	  "name": "set_value",
+	  "only_startup":true,
+	  "params": {
+	    "path":"/dashboard",
 	    "name":"pump_2/type",
 	    "value": "return"
 	  }
