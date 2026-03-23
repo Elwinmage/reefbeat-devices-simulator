@@ -1,0 +1,26 @@
+{
+  "pump_1": {
+    "feeding": {
+      "enabled": false,
+      "duration": 1800,
+      "intensity": 0,
+      "delay": 0
+    },
+    "maintenance": false,
+    "emergency": false,
+    "shortcut_off_delay": 0,
+    "pump_on_delayed": false
+  },
+  "pump_2": {
+    "feeding": {
+      "enabled": false,
+      "duration": 1800,
+      "intensity": 0,
+      "delay": 0
+    },
+    "maintenance": false,
+    "emergency": false,
+    "shortcut_off_delay": 0,
+    "pump_on_delayed": false
+  }
+}

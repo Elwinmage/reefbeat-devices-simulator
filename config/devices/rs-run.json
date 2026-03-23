@@ -3,6 +3,22 @@
   "access": {
     "no_GET": [],
     "PUT": [
+      "/pump/settings",
+      "/pump/shortcuts",
+      "/preview"
+    ],
+    "POST": [
+      "/calibration/2",
+      "/calibration/skim",
+      "/calibration/cup",
+      "/preview"
+    ],
+    "DELETE": [
+      "/calibration",
+      "/pump/1/settings",
+      "/pump/2/settings",
+      "/preview",
+      "/emergency"
     ]
   },
   "post_actions": [
