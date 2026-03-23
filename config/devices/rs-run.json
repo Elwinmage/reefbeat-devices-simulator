@@ -9,6 +9,7 @@
     ],
     "POST": [
       "/calibration/2",
+      "/calibration/1",
       "/calibration/skim",
       "/calibration/cup",
       "/preview"
