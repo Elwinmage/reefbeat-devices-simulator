@@ -29,8 +29,18 @@
         "pd": 0,
         "st": 0,
         "ti": 80
+      },
+      {
+        "pd": 0,
+        "st": 600,
+        "ti": 100
+      },
+      {
+        "pd": 0,
+        "st": 1200,
+        "ti": 50
       }
-    ],
+     ],
     "schedule_enabled": true,
     "sensor_controlled": true,
     "type": "skimmer"
