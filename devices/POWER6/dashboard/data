@@ -1,0 +1,77 @@
+{
+  "auto_from_buttons": false,
+  "battery_level": "high",
+  "connected_device": {
+    "hwid": "a4f00f55d6d0",
+    "internet_connected": true,
+    "status": "connected",
+    "type": "control"
+  },
+  "device_setup_date": 1772451154,
+  "is_internet_connected": true,
+  "mode": "auto",
+  "previous_mode": "setup",
+  "sockets": [
+    {
+      "consumption": 0,
+      "enabled": true,
+      "mode": "off",
+      "name": "Heater",
+      "number": 0,
+      "prev_mode": "on",
+      "state": "unknown",
+      "user_config_mode": "off"
+    },
+    {
+      "consumption": 0,
+      "enabled": true,
+      "mode": "setup",
+      "name": "S2",
+      "number": 1,
+      "prev_mode": "setup",
+      "state": "unknown",
+      "user_config_mode": "setup"
+    },
+    {
+      "consumption": 0,
+      "enabled": true,
+      "mode": "setup",
+      "name": "S3",
+      "number": 2,
+      "prev_mode": "setup",
+      "state": "unknown",
+      "user_config_mode": "setup"
+    },
+    {
+      "consumption": 0,
+      "enabled": true,
+      "mode": "setup",
+      "name": "S4",
+      "number": 3,
+      "prev_mode": "setup",
+      "state": "unknown",
+      "user_config_mode": "setup"
+    },
+    {
+      "consumption": 0,
+      "enabled": true,
+      "mode": "setup",
+      "name": "S5",
+      "number": 4,
+      "prev_mode": "setup",
+      "state": "unknown",
+      "user_config_mode": "setup"
+    },
+    {
+      "consumption": 0,
+      "enabled": true,
+      "mode": "setup",
+      "name": "S6",
+      "number": 5,
+      "prev_mode": "setup",
+      "state": "unknown",
+      "user_config_mode": "setup"
+    }
+  ],
+  "temperature": null
+}

@@ -1,0 +1,28 @@
+{
+  "buzzer": {
+    "active": false,
+    "cause": "none",
+    "dismissed": false
+  },
+  "cable_connected": true,
+  "connected_device": {
+    "hwid": "885721783bd8",
+    "internet_connected": true,
+    "state": "paired_connected"
+  },
+  "is_internet_connected": true,
+  "leak_detector": true,
+  "mode": "setup",
+  "ports": [
+    {
+      "consumption": 0,
+      "mode": "setup",
+      "name": "S1",
+      "number": 0,
+      "state": "unknown",
+      "type": "unknown",
+      "user_config_mode": "setup"
+    }
+  ],
+  "probes": []
+}

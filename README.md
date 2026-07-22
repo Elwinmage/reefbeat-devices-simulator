@@ -1,6 +1,7 @@
 # reefbeat-devices-simulator
 
-Simulate ReefBeat devices like ReefATO+, ReefDose, ReefLed,  ReefRun and ReefWave
+Simulate ReefBeat devices like ReefATO+, ReefDose, ReefLed, ReefRun, ReefWave,
+ReefControl (Lite/Pro) and ReefPower (6/8-socket)
 
 This repo has two distinct parts:
 
@@ -270,6 +271,10 @@ MAT
 LED
 RUN
 WAVE
+POWER6         (RSPOWER6, hw_type=reef-power, 6 AC sockets)
+POWER8         (RSPOWER8, hw_type=reef-power, 8 AC sockets)
+CONTROLPRO     (RSCONTROLPRO, hw_type=reef-control, 4-7 probes + 2x 12V)
+CONTROLLITE    (RSCONTROLLITE, hw_type=reef-control, 2 probes + 1x 12V)
 ```
 
 Existing fixture trees are also used to infer endpoint lists, allowing

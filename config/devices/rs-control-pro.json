@@ -1,0 +1,8 @@
+{
+  "type": "RSCONTROLPRO",
+  "access": {
+    "no_GET": [],
+    "PUT": []
+  },
+  "post_actions": []
+}

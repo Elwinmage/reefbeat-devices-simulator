@@ -1,0 +1,11 @@
+{
+  "chip_revision": "RSCONTROLLITE",
+  "framework_version": "4.3.2",
+  "last_message": "updated_successful",
+  "last_update": "2026-06-15T10:30:33+01:00",
+  "last_update_attempt": "2026-06-15T10:29:58+01:00",
+  "message": "firmware check success",
+  "success": true,
+  "update_server": "http://firmware.reef-beat.com/firmware/download/reef-control?framework=i",
+  "version": "1.0.1"
+}

@@ -1,0 +1,9 @@
+{
+  "hw_model": "RSCONTROLLITE",
+  "hw_revision": "v1.3_25A",
+  "hw_type": "reef-control",
+  "hwid": "__REEFBEAT_HW_ID__",
+  "message": "get device info successfully",
+  "name": "SIMU-__REEFBEAT_NAME__",
+  "success": true
+}

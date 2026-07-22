@@ -183,6 +183,16 @@ WAVE_URLS: Final[list[str]] = [
     "/feeding/schedule",
 ]
 
+# RSPOWER6 / RSPOWER8 (smart power center, 6 or 8 AC sockets)
+POWER_URLS: Final[list[str]] = [
+    "/configuration",
+]
+
+# RSCONTROLPRO / RSCONTROLLITE (ReefSense hub, probes + 12V ports)
+CONTROL_URLS: Final[list[str]] = [
+    "/configuration",
+]
+
 TYPE_MAP: Final[dict[str, list[str]]] = {
     "ATO": ATO_URLS,
     "DOSE": DOSE4_URLS,  # alias
@@ -192,6 +202,10 @@ TYPE_MAP: Final[dict[str, list[str]]] = {
     "LED": LED_URLS,
     "RUN": RUN_URLS,
     "WAVE": WAVE_URLS,
+    "POWER6": POWER_URLS,
+    "POWER8": POWER_URLS,
+    "CONTROLPRO": CONTROL_URLS,
+    "CONTROLLITE": CONTROL_URLS,
 }
 
 # Cloud endpoints (account-level). Keep this simple; add more later as needed.
@@ -1490,6 +1504,18 @@ def device_type_from_device_info_payload(payload: Mapping[str, Any]) -> str:
             return "DOSE4"
         return "DOSE4"
 
+    if hw_type_s == "reef-power":
+        # RSPOWER6 = 6 AC sockets, RSPOWER8 = 8 AC sockets. Default to POWER6.
+        if "POWER8" in hw_model_s:
+            return "POWER8"
+        return "POWER6"
+
+    if hw_type_s == "reef-control":
+        # RSCONTROLPRO = 4-7 probes + 2x 12V, RSCONTROLLITE = 2 probes + 1x 12V.
+        if "LITE" in hw_model_s:
+            return "CONTROLLITE"
+        return "CONTROLPRO"
+
     # Fallback: infer from model string.
     if "DOSE2" in hw_model_s:
         return "DOSE2"
@@ -1523,6 +1549,16 @@ def device_type_from_device_info_payload(payload: Mapping[str, Any]) -> str:
         return "WAVE"
     if "MAT" in hw_model_s:
         return "MAT"
+    if "POWER8" in hw_model_s:
+        return "POWER8"
+    if "POWER6" in hw_model_s or "POWER" in hw_model_s:
+        return "POWER6"
+    if "CONTROLLITE" in hw_model_s or (
+        "CONTROL" in hw_model_s and "LITE" in hw_model_s
+    ):
+        return "CONTROLLITE"
+    if "CONTROLPRO" in hw_model_s or "CONTROL" in hw_model_s:
+        return "CONTROLPRO"
 
     raise RuntimeError(
         f"Could not detect type (hw_type={hw_type!r}, hw_model={hw_model!r})"

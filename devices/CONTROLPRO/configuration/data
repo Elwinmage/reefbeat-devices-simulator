@@ -1,0 +1,15 @@
+{
+  "danger_buzzer_config": {
+    "duty_cycle": 20,
+    "enabled": true,
+    "frequency": 6
+  },
+  "danger_debounce_seconds": 30,
+  "leak_buzzer_config": {
+    "duty_cycle": 50,
+    "enabled": true,
+    "frequency": 12
+  },
+  "leak_detector": true,
+  "shortcut_off_delay": 0
+}

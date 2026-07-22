@@ -1,0 +1,8 @@
+{
+  "type": "RSPOWER6",
+  "access": {
+    "no_GET": [],
+    "PUT": []
+  },
+  "post_actions": []
+}

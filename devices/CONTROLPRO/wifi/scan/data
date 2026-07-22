@@ -1,0 +1,36 @@
+{
+  "duration": 400,
+  "message": "wifi scan finished",
+  "networks": [
+    {
+      "bssid": "98:AA:FC:32:B0:C0",
+      "channel": 11,
+      "security": "WPA2_PSK",
+      "signal_dBm": -45,
+      "ssid": "REDACTED_SSID"
+    },
+    {
+      "bssid": "58:CF:79:3C:36:B3",
+      "channel": 11,
+      "security": "OPEN",
+      "signal_dBm": -52,
+      "ssid": "REDACTED_SSID"
+    },
+    {
+      "bssid": "CC:40:D0:80:D2:3D",
+      "channel": 11,
+      "security": "WPA2_PSK",
+      "signal_dBm": -57,
+      "ssid": "REDACTED_SSID"
+    },
+    {
+      "bssid": "CE:40:D0:80:D2:3E",
+      "channel": 11,
+      "security": "WPA2_PSK",
+      "signal_dBm": -58,
+      "ssid": "REDACTED_SSID"
+    }
+  ],
+  "success": true,
+  "total_networks_found": 4
+}

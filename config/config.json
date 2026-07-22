@@ -47,6 +47,38 @@
       "ip": "192.168.0.250",
       "port": 80,
       "actions":"config/devices/rs-dose2.json"
+    },
+    {
+      "enabled": true,
+      "name": "RSPOWER6",
+      "base_url": "devices/POWER6",
+      "ip": "192.168.0.245",
+      "port": 80,
+      "actions":"config/devices/rs-power6.json"
+    },
+    {
+      "enabled": true,
+      "name": "RSPOWER8",
+      "base_url": "devices/POWER8",
+      "ip": "192.168.0.246",
+      "port": 80,
+      "actions":"config/devices/rs-power8.json"
+    },
+    {
+      "enabled": true,
+      "name": "RSCONTROLPRO",
+      "base_url": "devices/CONTROLPRO",
+      "ip": "192.168.0.247",
+      "port": 80,
+      "actions":"config/devices/rs-control-pro.json"
+    },
+    {
+      "enabled": true,
+      "name": "RSCONTROLLITE",
+      "base_url": "devices/CONTROLLITE",
+      "ip": "192.168.0.248",
+      "port": 80,
+      "actions":"config/devices/rs-control-lite.json"
     }
   ]
 }
