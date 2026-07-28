@@ -1,75 +1,92 @@
 {
-    "mode": "auto",
-    "is_internet_connected": true,
-    "cable_connected": true,
-    "connected_device": {
-        "state": "paired_connected",
-        "hwid": "885721783bd8",
-        "internet_connected": true
+  "mode": "auto",
+  "is_internet_connected": true,
+  "cable_connected": true,
+  "connected_device": {
+    "state": "paired_connected",
+    "hwid": "885721783bd8",
+    "internet_connected": true
+  },
+  "probes": [
+    {
+      "type": "orp",
+      "uid": "0x0071C",
+      "name": "Ozone",
+      "status": "auto",
+      "value": 186,
+      "level": "danger",
+      "last_installation_date": 1784391243
     },
-    "probes": [
-        {
-            "type": "orp",
-            "uid": "0x0071C",
-            "name": "Ozone Probe",
-            "status": "auto",
-            "value": 146,
-            "level": "danger",
-            "last_installation_date": 1784391243
-        },
-        {
-            "type": "ec",
-            "uid": "0x00432",
-            "measurement_unit": "ppt",
-            "value": 36.5,
-            "name": "Salinity Probe",
-            "status": "auto",
-            "ec": 55.1,
-            "ppt": 36.5,
-            "sg": 1.0275,
-            "level": "acceptable",
-            "temp_value": 25.8,
-            "temp_level": "desired",
-            "last_installation_date": 1784392274,
-            "last_adjustment_date": null
-        },
-        {
-            "type": "ph",
-            "uid": "0x00132",
-            "name": "pH Probe",
-            "status": "auto",
-            "value": 8.27,
-            "level": "desired",
-            "temp_value": 25.9,
-            "temp_level": "desired",
-            "last_installation_date": 1784392364,
-            "last_adjustment_date": 1784394757
-        }
-    ],
-    "ports": [
-        {
-            "number": 0,
-            "name": "S1",
-            "mode": "setup",
-            "type": "unknown",
-            "state": "unknown",
-            "user_config_mode": "setup",
-            "consumption": 0
-        },
-        {
-            "number": 1,
-            "name": "S2",
-            "mode": "setup",
-            "type": "unknown",
-            "state": "unknown",
-            "user_config_mode": "setup",
-            "consumption": 0
-        }
-    ],
-    "buzzer": {
-        "active": false,
-        "cause": "none",
-        "dismissed": false
+    {
+      "type": "ec",
+      "uid": "0x00432",
+      "measurement_unit": "ppt",
+      "value": 36.3,
+      "name": "Salinity",
+      "status": "auto",
+      "ec": 54.8,
+      "ppt": 36.3,
+      "sg": 1.0274,
+      "level": "acceptable",
+      "temp_value": 26,
+      "temp_level": "acceptable",
+      "last_installation_date": 1784392274,
+      "last_adjustment_date": null
     },
-    "leak_detector": true
+    {
+      "type": "ph",
+      "uid": "0x00132",
+      "name": "pH",
+      "status": "auto",
+      "value": 8.11,
+      "level": "desired",
+      "temp_value": 26.2,
+      "temp_level": "acceptable",
+      "last_installation_date": 1784392364,
+      "last_adjustment_date": 1784394757
+    },
+    {
+      "type": "ato",
+      "uid": "0x004C6",
+      "name": "Level & Temp",
+      "status": "auto",
+      "water_level": "desired_level_1",
+      "temp_value": 26.1,
+      "temp_level": "acceptable",
+      "last_installation_date": 1784983713,
+      "last_adjustment_date": 1784983900
+    }
+  ],
+  "ports": [
+    {
+      "number": 0,
+      "name": "ATO",
+      "type": "ato",
+      "mode": "auto",
+      "user_config_mode": "auto",
+      "auto_fill": true,
+      "temp_log_enabled": true,
+      "uid": "0x004C6",
+      "today_volume": 0,
+      "is_pump_on": false,
+      "last_pump_on_cause": "unknown",
+      "volume_left": 13000,
+      "consumption": 0
+    },
+    {
+      "number": 1,
+      "name": "Ozone1",
+      "mode": "off",
+      "type": "other",
+      "state": "unknown",
+      "user_config_mode": "off",
+      "consumption": 0
+    }
+  ],
+  "buzzer": {
+    "active": false,
+    "cause": "none",
+    "dismissed": false
+  },
+  "leak_detector": true
 }
