@@ -20,7 +20,7 @@
           "params": {
             "path": "/dashboard",
 	    "name": "pump_2/state",
-	    "value": "full-cup"
+	    "value": "operational"
           }
         }
       ]
@@ -99,6 +99,24 @@
           "only_once": 5,
           "params": {
             "path": "/dashboard",
+            "name": "pump_2/sensor_controlled",
+            "value": false
+          }
+        },
+        {
+          "name": "set_value",
+          "only_once": 5,
+          "params": {
+            "path": "/dashboard",
+            "name": "pump_2/schedule_enabled",
+            "value": false
+          }
+        },
+        {
+          "name": "set_value",
+          "only_once": 5,
+          "params": {
+            "path": "/dashboard",
             "name": "pump_2/temperature",
             "value": 0
           }
@@ -108,26 +126,8 @@
           "only_once": 5,
           "params": {
             "path": "/dashboard",
-            "name": "pump_2/state",
-            "value": "not-connected"
-          }
-        },
-        {
-          "name": "set_value",
-          "only_once": 5,
-          "params": {
-            "path": "/dashboard",
             "name": "pump_2/intensity",
             "value": 0
-          }
-        },
-        {
-          "name": "set_value",
-          "only_once": 0,
-          "params": {
-            "path": "/dashboard",
-            "name": "ec_sensor_connected",
-            "value": false
           }
         },
         {

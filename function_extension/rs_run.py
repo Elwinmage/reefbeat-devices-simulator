@@ -80,6 +80,13 @@ def sync_pump_intensity(
         if pump_key not in data or not isinstance(data[pump_key], dict):
             continue
 
+        # If the pump is physically disconnected (missing_pump=true), leave
+        # the state produced by the disconnect modifiers alone. Running the
+        # normal sync logic would otherwise restore intensity to the
+        # schedule's ti and undo the "no pump" simulation.
+        if data[pump_key].get("missing_pump"):
+            continue
+
         if schedule_enabled:
             if save_key in _saved_intensity:
                 # Just re-enabled: restore saved intensity everywhere

@@ -122,6 +122,10 @@ class MyServer(HTTPServer):
             )
 
         self._db = {}
+        # Tracks which sub-calibration (skim/cup) was performed last so that
+        # DELETE /calibration only bumps the matching *last_calibration_date*
+        # field, matching the real ReefRun behaviour observed in pcaps.
+        self._last_calibration_type: Optional[str] = None
         # Test if local IP exists
         must_create_ip = True
         for line in (
@@ -414,6 +418,7 @@ class HttpServer(BaseHTTPRequestHandler):
                         server.update_db(p_action.target, val)
                 else:
                     server.update_db(self.path, r_data)
+                    self._handle_write_side_effects(server, method, r_data)
             self.wfile.write(bytes('{"success":true}', "utf8"))
         else:
             self.log("  ==>    %s %s:404" % (method, self.path))
@@ -457,6 +462,14 @@ class HttpServer(BaseHTTPRequestHandler):
             content_length_str = self.headers.get("Content-Length")
             if content_length_str:
                 self.rfile.read(int(content_length_str))
+            # Track which specific sub-calibration was performed so that a
+            # subsequent DELETE /calibration only bumps the matching date.
+            # POST /calibration/2 opens the EC session but does not by itself
+            # decide which date will be updated, so we leave the tracker alone.
+            if self.path == "/calibration/skim":
+                server._last_calibration_type = "skim"
+            elif self.path == "/calibration/cup":
+                server._last_calibration_type = "cup"
             # When POST /calibration/2, update pump states to "calibration"
             if self.path == "/calibration/2" and "/dashboard" in server._db:
                 for pk in ("pump_1", "pump_2"):
@@ -505,15 +518,31 @@ class HttpServer(BaseHTTPRequestHandler):
             self.wfile.write(bytes('{"success":true}', "utf8"))
             return
 
-        # Generic DELETE: check if path exists in DB and has DELETE access
+        # Generic DELETE: only allow if DELETE is explicitly listed in the
+        # actions config for the current path. Falling back to GET rights was
+        # too permissive and allowed DELETEs on any read-only endpoint.
         if self.path in server._db:
             access = server._db[self.path].get("access", {})
             rights = access.get("rights", [])
-            # Allow DELETE if explicitly listed or if we have the data
-            if "DELETE" in rights or "GET" in rights:
+            if "DELETE" in rights:
                 self._handle_delete_side_effects(server)
                 self.send_response(200)
                 self.end_headers()
+                # /calibration returns the currently-open EC session message
+                # on the real device, not the raw calibration timestamps.
+                if self.path == "/calibration":
+                    self.wfile.write(
+                        bytes(
+                            json.dumps(
+                                {
+                                    "success": True,
+                                    "message": "ec calibration ended with success",
+                                }
+                            ),
+                            "utf8",
+                        )
+                    )
+                    return
                 data = server.get_data(self.path)
                 if isinstance(data, dict) and "message" in data:
                     self.wfile.write(bytes(json.dumps(data), "utf8"))
@@ -533,6 +562,39 @@ class HttpServer(BaseHTTPRequestHandler):
         self.send_response(404)
         self.end_headers()
 
+    def _handle_write_side_effects(
+        self, server: "MyServer", method: str, r_data: Any
+    ) -> None:
+        """Apply state side-effects after a successful PUT/POST merge.
+
+        ReefRun-specific:
+        - PUT /pump/settings with a payload carrying pump identity fields
+          (name/type/model) should mirror those fields into /dashboard so that
+          re-adopting a pump after a factory reset actually updates the
+          dashboard view — this matches the real device behaviour observed
+          in captures of the reset + re-adopt workflow.
+        """
+        if method != "PUT" or self.path != "/pump/settings":
+            return
+        if not isinstance(r_data, dict) or "/dashboard" not in server._db:
+            return
+        dashboard_update: dict[str, dict[str, Any]] = {}
+        for pump_key in ("pump_1", "pump_2"):
+            pump_body = r_data.get(pump_key)
+            if not isinstance(pump_body, dict):
+                continue
+            identity = {
+                k: pump_body[k] for k in ("name", "type", "model") if k in pump_body
+            }
+            if identity:
+                dashboard_update[pump_key] = identity
+        if dashboard_update:
+            server.update_db("/dashboard", dashboard_update)
+            self.log(
+                "PUT /pump/settings: mirrored identity to /dashboard: %s"
+                % dashboard_update
+            )
+
     def _handle_delete_side_effects(self, server: "MyServer") -> None:
         """Apply state side-effects when a DELETE is processed.
 
@@ -545,17 +607,30 @@ class HttpServer(BaseHTTPRequestHandler):
         import time as _time
 
         if self.path == "/calibration":
-            # Update calibration dates to current time (like real device)
+            # DELETE /calibration commits the currently-open EC session.
+            # The real device only bumps the date matching the sub-calibration
+            # that was actually performed during the session (skim or cup).
+            # If no sub-calibration was performed (only POST /calibration/2),
+            # no date is updated.
             now = int(_time.time())
-            if "/calibration" in server._db and "data" in server._db["/calibration"]:
-                server.update_db(
-                    "/calibration",
-                    {
-                        "skim_last_calibration_date": now,
-                        "cup_last_calibration_date": now,
-                    },
-                )
-            self.log("EC calibration ended, dates updated to %d" % now)
+            last_type = getattr(server, "_last_calibration_type", None)
+            update: dict[str, int] = {}
+            if last_type == "skim":
+                update["skim_last_calibration_date"] = now
+            elif last_type == "cup":
+                update["cup_last_calibration_date"] = now
+            if (
+                update
+                and "/calibration" in server._db
+                and "data" in server._db["/calibration"]
+            ):
+                server.update_db("/calibration", update)
+            # Reset tracker for the next session.
+            server._last_calibration_type = None
+            self.log(
+                "EC calibration session ended (last_type=%s, updated=%s)"
+                % (last_type, list(update))
+            )
 
         elif self.path in ("/pump/1/settings", "/pump/2/settings"):
             # Extract pump number from path
