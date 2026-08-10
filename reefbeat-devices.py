@@ -568,32 +568,47 @@ class HttpServer(BaseHTTPRequestHandler):
         """Apply state side-effects after a successful PUT/POST merge.
 
         ReefRun-specific:
-        - PUT /pump/settings with a payload carrying pump identity fields
-          (name/type/model) should mirror those fields into /dashboard so that
-          re-adopting a pump after a factory reset actually updates the
-          dashboard view — this matches the real device behaviour observed
-          in captures of the reset + re-adopt workflow.
+        - PUT /pump/settings mirrors into /dashboard every field the two
+          payloads have in common (name, type, model, schedule_enabled,
+          sensor_controlled, ...). The real device exposes a single state that
+          both endpoints project, so a setting written through /pump/settings
+          is visible on /dashboard right away.
+
+        The mirrored set is computed from the keys actually present in
+        /dashboard rather than hardcoded, so settings-only fields (id,
+        schedule) are never injected and a new shared field needs no change
+        here.
         """
         if method != "PUT" or self.path != "/pump/settings":
             return
         if not isinstance(r_data, dict) or "/dashboard" not in server._db:
             return
-        dashboard_update: dict[str, dict[str, Any]] = {}
+        dashboard = server._db["/dashboard"].get("data")
+        if not isinstance(dashboard, dict):
+            return
+
+        update: dict[str, Any] = {}
+
+        # Top-level fields (linked, synced, ...)
+        for key, value in r_data.items():
+            if key.startswith("pump_"):
+                continue
+            if key in dashboard and not isinstance(value, (dict, list)):
+                update[key] = value
+
+        # Per-pump fields
         for pump_key in ("pump_1", "pump_2"):
             pump_body = r_data.get(pump_key)
-            if not isinstance(pump_body, dict):
+            dash_pump = dashboard.get(pump_key)
+            if not isinstance(pump_body, dict) or not isinstance(dash_pump, dict):
                 continue
-            identity = {
-                k: pump_body[k] for k in ("name", "type", "model") if k in pump_body
-            }
-            if identity:
-                dashboard_update[pump_key] = identity
-        if dashboard_update:
-            server.update_db("/dashboard", dashboard_update)
-            self.log(
-                "PUT /pump/settings: mirrored identity to /dashboard: %s"
-                % dashboard_update
-            )
+            mirrored = {k: v for k, v in pump_body.items() if k in dash_pump}
+            if mirrored:
+                update[pump_key] = mirrored
+
+        if update:
+            server.update_db("/dashboard", update)
+            self.log("PUT /pump/settings: mirrored to /dashboard: %s" % update)
 
     def _handle_delete_side_effects(self, server: "MyServer") -> None:
         """Apply state side-effects when a DELETE is processed.
