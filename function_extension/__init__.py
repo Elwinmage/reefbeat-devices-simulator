@@ -4,12 +4,13 @@ from .common import (
     decrease_value,
 )
 from .rs_dose import decrease_volume
-from .rs_run import sync_pump_intensity
+from .rs_run import simulate_pump_temperature, sync_pump_intensity
 
 __all__ = [
     "decrease_volume",
     "set_value",
     "increase_value",
     "decrease_value",
+    "simulate_pump_temperature",
     "sync_pump_intensity",
 ]

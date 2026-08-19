@@ -9,11 +9,22 @@ Normal      → dashboard intensity follows the active schedule ti
 """
 
 import datetime
-from typing import Any, Dict
+import random
+from typing import Any, Dict, List
 
 # Per-pump store for the last known schedule intensity before disable.
 # Keyed by (server-name, pump_key) so multiple RUN instances don't collide.
 _saved_intensity: Dict[tuple, int] = {}
+
+# Plausible body temperature range (°C) reported by a running ReefRun pump.
+_TEMP_MIN = 38.0
+_TEMP_MAX = 45.0
+# Maximum drift applied between two consecutive /dashboard reads.
+_TEMP_STEP = 0.2
+
+# Per-pump temperature state: key -> [current_value, low_bound, high_bound].
+# Keyed by (server-name, pump_key), like _saved_intensity.
+_temperature: Dict[tuple, List[float]] = {}
 
 
 def _find_active_segment(schedule: list, now_minutes: int) -> dict:
@@ -104,5 +115,82 @@ def sync_pump_intensity(
                 _saved_intensity[save_key] = schedule_ti
             data[pump_key]["intensity"] = 0
             data[pump_key]["schedule_enabled"] = False
+
+    return data
+
+
+def _pump_is_present(pump: Dict[str, Any]) -> bool:
+    """Return True when the dashboard entry describes a connected pump."""
+    if pump.get("missing_pump"):
+        return False
+    return str(pump.get("type", "unknown")).strip().lower() not in ("", "unknown")
+
+
+def simulate_pump_temperature(
+    path: str, data: Dict[str, Any], params: Any, ctx: Any
+) -> Dict[str, Any]:
+    """Keep a plausible ``temperature`` on /dashboard for each pump.
+
+    Real hardware never reports 0 °C for a connected pump, but the simulator
+    does after a ``DELETE /pump/{n}/settings`` followed by a re-adoption
+    (``PUT /pump/settings``): the delete side-effect resets the dashboard
+    entry to 0 and nothing ever brings it back.
+
+    Behaviour:
+    - pump absent (``type`` unknown/empty) or disconnected (``missing_pump``)
+        temperature forced to 0, stored state dropped
+    - pump present with an implausible temperature (0, missing, non numeric)
+        seed a random value in the [min, max] range (38-45 °C by default)
+    - pump present with an existing plausible value (fixture data)
+        keep that value as the starting point and widen the drift band so the
+        original fixture reading is preserved
+
+    On every subsequent read the value drifts slightly inside its band, which
+    gives the card/integration something realistic to display and graph.
+
+    Optional ``params``: ``min``, ``max``, ``step``.
+    """
+    server = getattr(ctx, "server", None)
+    server_name = getattr(getattr(server, "config", None), "name", "")
+
+    t_min = float(getattr(params, "min", _TEMP_MIN))
+    t_max = float(getattr(params, "max", _TEMP_MAX))
+    step = float(getattr(params, "step", _TEMP_STEP))
+
+    for pump_key in ("pump_1", "pump_2"):
+        pump = data.get(pump_key)
+        if not isinstance(pump, dict):
+            continue
+
+        state_key = (server_name, pump_key)
+
+        if not _pump_is_present(pump):
+            # No pump plugged in: the device reports 0 and we forget the state
+            # so a later re-adoption seeds a fresh value.
+            _temperature.pop(state_key, None)
+            pump["temperature"] = 0
+            continue
+
+        state = _temperature.get(state_key)
+        if state is None:
+            current = pump.get("temperature")
+            if isinstance(current, (int, float)) and not isinstance(current, bool):
+                seed = float(current)
+            else:
+                seed = 0.0
+            if seed <= 0:
+                # Freshly added pump: pick a realistic starting temperature
+                seed = random.uniform(t_min, t_max)
+                low, high = t_min, t_max
+            else:
+                # Fixture value kept as-is, band widened around it if needed
+                low, high = min(t_min, seed), max(t_max, seed)
+            state = [seed, low, high]
+        else:
+            state[0] += random.uniform(-step, step)
+
+        state[0] = min(max(state[0], state[1]), state[2])
+        _temperature[state_key] = state
+        pump["temperature"] = round(state[0], 2)
 
     return data

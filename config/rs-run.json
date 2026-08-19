@@ -16,11 +16,19 @@
         },
         {
           "name": "set_value",
-	  "only_once": 0,
+          "only_once": 0,
           "params": {
             "path": "/dashboard",
-	    "name": "pump_2/state",
-	    "value": "operational"
+            "name": "pump_2/state",
+            "value": "operational"
+          }
+        },
+        {
+          "name": "simulate_pump_temperature",
+          "params": {
+            "path": "/dashboard",
+            "min": 38,
+            "max": 45
           }
         }
       ]
@@ -65,12 +73,20 @@
           "params": {
             "path": "/dashboard"
           }
+        },
+        {
+          "name": "simulate_pump_temperature",
+          "params": {
+            "path": "/dashboard",
+            "min": 38,
+            "max": 45
+          }
         }
       ]
     },
     {
       "enabled": true,
-      "name": "RSRUN_DISCONNECTED",
+      "name": "RSRUN_TWO_RETURN",
       "base_url": "devices/RUN",
       "ip": "192.168.0.242",
       "port": 80,
@@ -78,11 +94,20 @@
       "modifiers": [
         {
           "name": "set_value",
+          "params": {
+            "path": "/dashboard",
+            "name": "pump_2/type",
+            "value": "return"
+          },
+          "only_once": 0
+        },
+        {
+          "name": "set_value",
           "only_once": 5,
           "params": {
             "path": "/dashboard",
             "name": "pump_2/missing_pump",
-            "value": true
+            "value": false
           }
         },
         {
@@ -109,7 +134,7 @@
           "params": {
             "path": "/dashboard",
             "name": "pump_2/schedule_enabled",
-            "value": false
+            "value": true
           }
         },
         {
@@ -134,6 +159,14 @@
           "name": "sync_pump_intensity",
           "params": {
             "path": "/dashboard"
+          }
+        },
+        {
+          "name": "simulate_pump_temperature",
+          "params": {
+            "path": "/dashboard",
+            "min": 38,
+            "max": 45
           }
         }
       ]
@@ -204,6 +237,14 @@
           "name": "sync_pump_intensity",
           "params": {
             "path": "/dashboard"
+          }
+        },
+        {
+          "name": "simulate_pump_temperature",
+          "params": {
+            "path": "/dashboard",
+            "min": 38,
+            "max": 45
           }
         }
       ]
