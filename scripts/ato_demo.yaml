@@ -1,0 +1,196 @@
+# Example scenario for ato_timelapse.py
+#
+#   ./ato_timelapse.py --device rsato --scenario ato_demo.yaml --dry-run
+#   ./ato_timelapse.py --device rsato --scenario ato_demo.yaml
+#
+# Entities are named by their `reef_role`, the stable translation_key that
+# ha-reefbeat-component puts on every sensor, binary_sensor and select — not by
+# entity_id, so the same file works on any install whatever the language or the
+# renames. `--show-roles` lists the ones available on your device.
+#
+# Step types, all optional and applied in this order within a step:
+#   wait:     pause N seconds before doing anything else
+#   set:      write one or more roles to a fixed state
+#   ramp:     walk a numeric role from `from` to `to`
+#   cycle:    walk a role through a list of states
+#   simulate: play the real ATO loop, both levels coupled (see the last step)
+#   restore:  put back everything written so far, and forget it
+#
+# Steps run one after another — there is no parallelism. The two water levels
+# are not independent anyway: the reservoir only empties while the pump fills,
+# so `simulate` models that coupling rather than running two tracks at once.
+
+name: ReefATO+ full tour
+
+# What 100% refers to, in the unit of `volume_left` — millilitres on a
+# ReefATO+, while `ato_tank_volume` is in litres. A 71 L reservoir is 71000.
+#
+# It has to be stated here because `ato_tank_volume` is a `number` entity and
+# ha-reefbeat-component only exposes `reef_role` on sensor, binary_sensor and
+# select, so the capacity cannot be read back.
+capacity: 71000
+
+# Autonomy at a full reservoir. Every write of `volume_left` publishes a
+# matching `days_till_empty`, so the countdown follows the tank instead of
+# sitting frozen while it visibly drains.
+days_when_full: 4
+
+sequence:
+  # ---------------------------------------------------------------- #
+  # 1. Bare controller: no pump, no leak probe
+  #
+  #    `missing_pump` is what hides the pump overlay and, with it, the
+  #    fill / stop_fill / resume / auto_fill controls, the reservoir
+  #    gauge and days_till_empty. `connected: off` hides the leak
+  #    overlay entirely.
+  # ---------------------------------------------------------------- #
+  - name: No pump, no leak detector
+    set:
+      mode: missing_pump
+      is_pump_on: "off"
+      connected: "off"
+      enabled: "off"
+      status: "off"
+      buzzer_on: "off"
+      leak_sensor_status: dry
+      water_level: desired_level_2
+      ato_sensor_connected: "on"
+      is_sensor_error: "off"
+      check_sensor: "off"
+
+  # ---------------------------------------------------------------- #
+  # 2. Pump appears, reservoir full
+  # ---------------------------------------------------------------- #
+  - name: Pump added, reservoir full
+    wait: 8
+    set:
+      mode: auto
+      volume_left: 100%
+
+  # ---------------------------------------------------------------- #
+  # 3. Leak probe appears, armed and dry
+  # ---------------------------------------------------------------- #
+  - name: Leak detector added, operational
+    wait: 8
+    set:
+      connected: "on"
+      enabled: "on"
+      status: "off"
+      leak_sensor_status: dry
+
+  # ---------------------------------------------------------------- #
+  # 4. Still plugged in, but switched off in the app: the overlay goes
+  #    dim and greyscale rather than disappearing
+  # ---------------------------------------------------------------- #
+  - name: Leak detector disarmed
+    wait: 8
+    set:
+      enabled: "off"
+
+  # ---------------------------------------------------------------- #
+  # 5. Water where it should not be. `status` is the PROBLEM sensor the
+  #    card animates; `leak_sensor_status` is the raw firmware value,
+  #    set alongside so a dashboard showing it stays coherent.
+  # ---------------------------------------------------------------- #
+  - name: Leak detected
+    wait: 8
+    set:
+      enabled: "on"
+      status: "on"
+      leak_sensor_status: aquarium_water_leak
+      buzzer_on: "on"
+
+  - name: Leak cleared
+    wait: 10
+    set:
+      status: "off"
+      leak_sensor_status: dry
+      buzzer_on: "off"
+
+  # ---------------------------------------------------------------- #
+  # 6. Pump fault. `stalled` is one of five modes the card treats as a
+  #    pump alert, alongside malfunction, pump_timeout, empty and
+  #    missing_sensor — swap it in to check each one.
+  # ---------------------------------------------------------------- #
+  - name: Pump fault
+    wait: 8
+    set:
+      mode: stalled
+
+  - name: Pump fault cleared
+    wait: 10
+    set:
+      mode: auto
+
+  # ---------------------------------------------------------------- #
+  # 7. Level probe unplugged. `is_sensor_error` is a hard read failure;
+  #    `check_sensor` is the softer "go inspect the probe" flag, shown
+  #    here too since the card treats either as a problem.
+  # ---------------------------------------------------------------- #
+  - name: Level probe unplugged
+    wait: 8
+    set:
+      ato_sensor_connected: "off"
+      is_sensor_error: "on"
+      check_sensor: "on"
+      temperature_probe_status: disconnected
+      water_level: error
+
+  - name: Level probe back
+    wait: 10
+    set:
+      ato_sensor_connected: "on"
+      is_sensor_error: "off"
+      check_sensor: "off"
+      temperature_probe_status: connected
+      water_level: desired_level_2
+
+  # ---------------------------------------------------------------- #
+  # 8. High water alert. `above` is an overshoot fault: the top-up loop
+  #    below never produces it, so it has to be staged.
+  # ---------------------------------------------------------------- #
+  - name: High water alert
+    wait: 8
+    set:
+      water_level: above
+      mode: high_water
+
+  - name: High water cleared
+    wait: 10
+    set:
+      water_level: desired_level_2
+      mode: auto
+
+  # ---------------------------------------------------------------- #
+  # 9. The real loop: the sump evaporates down to `below`, the pump
+  #    starts, the sump climbs back to `target` while the reservoir
+  #    gives up `consumption`, the pump stops. Repeated until empty,
+  #    then the device is left in `empty` with the sump low.
+  #
+  #    This is the one worth filming: volume_left and days_till_empty
+  #    only move while the pump runs, which a plain ramp would not show.
+  # ---------------------------------------------------------------- #
+  - name: Top-up cycles until the reservoir runs dry
+    wait: 5
+    simulate:
+      from: 100%
+      to: 0%
+      consumption: 32%    # reservoir used by one top-up
+      evaporation: 6      # seconds for the sump to lose one level, pump off
+      fill: 2             # seconds for the sump to gain one level, pump on
+      frames: 5           # volume updates per level, for a smooth gauge
+      trigger: below            # sump level that starts the pump
+      target: desired_level_2   # sump level that stops it
+      start_level: desired_level_2
+      # max_cycles: 2     # cut it short instead of draining the whole tank
+
+  # ---------------------------------------------------------------- #
+  # 10. Do not end the recording on a fault
+  # ---------------------------------------------------------------- #
+  - name: All clear
+    wait: 8
+    set:
+      mode: auto
+      volume_left: 100%
+      water_level: desired_level_2
+      is_pump_on: "off"
