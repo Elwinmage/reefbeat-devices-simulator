@@ -4,3 +4,4 @@ __pycache__/
 *.tar*
 .reefbeat_sanitize_map.json
 **/.raw/
+ato_timelapse.conf
