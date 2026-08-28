@@ -567,20 +567,34 @@ class HttpServer(BaseHTTPRequestHandler):
     ) -> None:
         """Apply state side-effects after a successful PUT/POST merge.
 
-        ReefRun-specific:
-        - PUT /pump/settings mirrors into /dashboard every field the two
-          payloads have in common (name, type, model, schedule_enabled,
-          sensor_controlled, ...). The real device exposes a single state that
-          both endpoints project, so a setting written through /pump/settings
-          is visible on /dashboard right away.
+        Dispatches to the per-device handlers below. Each of them projects a
+        write onto the endpoint the real firmware also updates, so a client
+        that writes a setting and then polls sees the new value where it
+        expects it.
+
+        - PUT /pump/settings (ReefRun) -> /dashboard
+        - PUT /configuration (ReefATO+) -> /dashboard
+        """
+        if method != "PUT":
+            return
+        if self.path == "/pump/settings":
+            self._handle_run_pump_settings_write(server, r_data)
+        elif self.path == "/configuration":
+            self._handle_ato_configuration_write(server, r_data)
+
+    def _handle_run_pump_settings_write(self, server: "MyServer", r_data: Any) -> None:
+        """Mirror a ReefRun PUT /pump/settings onto /dashboard.
+
+        Mirrors every field the two payloads have in common (name, type,
+        model, schedule_enabled, sensor_controlled, ...). The real device
+        exposes a single state that both endpoints project, so a setting
+        written through /pump/settings is visible on /dashboard right away.
 
         The mirrored set is computed from the keys actually present in
         /dashboard rather than hardcoded, so settings-only fields (id,
         schedule) are never injected and a new shared field needs no change
         here.
         """
-        if method != "PUT" or self.path != "/pump/settings":
-            return
         if not isinstance(r_data, dict) or "/dashboard" not in server._db:
             return
         dashboard = server._db["/dashboard"].get("data")
@@ -609,6 +623,71 @@ class HttpServer(BaseHTTPRequestHandler):
         if update:
             server.update_db("/dashboard", update)
             self.log("PUT /pump/settings: mirrored to /dashboard: %s" % update)
+
+    def _handle_ato_configuration_write(self, server: "MyServer", r_data: Any) -> None:
+        """Mirror a ReefATO+ PUT /configuration onto /dashboard.
+
+        The RSATO+ exposes the leak probe arming flag and the leak alarm
+        buzzer twice, under different names: they are written to
+        /configuration as `leak.sensor_enabled` and `buzzer.enabled`, but
+        reported on /dashboard as `leak_sensor.enabled` and
+        `leak_sensor.buzzer_enabled`. A client that writes the setting and
+        then polls /dashboard -- which is what the Home Assistant integration
+        does, since /dashboard is the frequently polled source -- must see the
+        new value there, so the write is projected the way the firmware does
+        it.
+
+        The merged configuration is read back rather than the request body:
+        the firmware accepts a partial payload and clients only send the keys
+        the user changed, so a key left out keeps its previous value.
+
+        Other devices also serve /configuration (the ReefMat carries
+        `position` there), hence the guards on the payload keys and on the
+        presence of a `leak_sensor` block in the dashboard.
+        """
+        if not isinstance(r_data, dict):
+            return
+        if "buzzer" not in r_data and "leak" not in r_data:
+            return
+        if "/dashboard" not in server._db:
+            return
+
+        dashboard = server._db["/dashboard"].get("data")
+        if not isinstance(dashboard, dict):
+            return
+        leak_sensor = dashboard.get("leak_sensor")
+        if not isinstance(leak_sensor, dict):
+            return
+
+        config = server._db.get("/configuration", {}).get("data")
+        if not isinstance(config, dict):
+            config = {}
+
+        update: dict[str, Any] = {}
+
+        buzzer_config = config.get("buzzer")
+        if isinstance(buzzer_config, dict) and "enabled" in buzzer_config:
+            update["buzzer_enabled"] = bool(buzzer_config["enabled"])
+
+        leak_config = config.get("leak")
+        if isinstance(leak_config, dict) and "sensor_enabled" in leak_config:
+            update["enabled"] = bool(leak_config["sensor_enabled"])
+
+        if not update:
+            return
+
+        # The buzzer only sounds on a wet probe, and only while both the probe
+        # and the buzzer are armed. Disabling either therefore silences an
+        # alarm that is currently ringing, as it does on the device.
+        enabled = update.get("enabled", bool(leak_sensor.get("enabled", False)))
+        buzzer_enabled = update.get(
+            "buzzer_enabled", bool(leak_sensor.get("buzzer_enabled", False))
+        )
+        is_wet = leak_sensor.get("status", "dry") != "dry"
+        update["buzzer_on"] = bool(is_wet and enabled and buzzer_enabled)
+
+        server.update_db("/dashboard", {"leak_sensor": update})
+        self.log("PUT /configuration: mirrored to /dashboard: %s" % update)
 
     def _handle_delete_side_effects(self, server: "MyServer") -> None:
         """Apply state side-effects when a DELETE is processed.

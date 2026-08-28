@@ -114,6 +114,30 @@ devices/DOSE4/description.xml/data
 
 `description.xml` is served as raw text; other endpoints are served as JSON.
 
+---
+
+### Device-Specific Write Behaviour
+
+Some settings are written to one endpoint but reported on another, because the
+real firmware exposes them twice under different names. For those, merging the
+payload into the endpoint that received it is not enough: the simulator also
+projects the write onto the endpoint a client polls.
+
+| Device   | Write               | Also updates | Fields                                                                              |
+| -------- | ------------------- | ------------ | ----------------------------------------------------------------------------------- |
+| ReefRun  | `PUT /pump/settings` | `/dashboard` | Every field the two payloads share (`name`, `type`, `model`, `sensor_controlled`, …) |
+| ReefATO+ | `PUT /configuration` | `/dashboard` | `leak.sensor_enabled` → `leak_sensor.enabled`, `buzzer.enabled` → `leak_sensor.buzzer_enabled` |
+
+The ReefATO+ mapping is what makes the leak-sensor and buzzer enable/disable
+switches usable against the simulator: they are written as `leak` and `buzzer`
+on `/configuration`, but read back from `leak_sensor` on the polled
+`/dashboard`. Partial payloads are supported, as on the device — a key left out
+of the request keeps its previous value.
+
+`leak_sensor.buzzer_on` is recomputed on each such write: the buzzer only
+sounds while the probe is wet (`status` other than `dry`) **and** both the probe
+and the buzzer are enabled, so disabling either one silences a ringing alarm.
+
 ## Fixture Exporter (Create Fixtures)
 
 `run.py` is a Python-based fixture exporter for the ReefBeat Devices Simulator.
