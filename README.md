@@ -138,6 +138,41 @@ of the request keeps its previous value.
 sounds while the probe is wet (`status` other than `dry`) **and** both the probe
 and the buzzer are enabled, so disabling either one silences a ringing alarm.
 
+---
+
+### ReefATO+ Manual Fill
+
+`POST /manual-pump` and `POST /stop` are simulated end to end, so the fill and
+stop-fill buttons of a client can be exercised against the fixtures.
+
+`is_pump_on` is the authoritative field — it goes `true` on `/manual-pump` and
+`false` on `/stop`. `pump_state` and `prev_pump_state` are kept in step with it
+so the three never contradict each other, and `last_pump_on_cause` becomes
+`manual`.
+
+While the pump runs, each `GET /dashboard` accounts the water dispensed since
+the previous one:
+
+| Field                                      | Behaviour                                                     |
+| ------------------------------------------ | ------------------------------------------------------------- |
+| `volume_left`                               | decreases, floored at 0                                       |
+| `today_volume_usage` / `total_volume_usage` | increase by the same amount                                   |
+| `today_fills` / `total_fills`               | increase by one when the fill ends                            |
+| `last_fill_date`                            | set to the current epoch when the fill ends                   |
+
+The volume comes from `flow_rate` on `/dashboard`, read as **milliliters per
+minute** (`ATO_FLOW_RATE_PERIOD_S` in `reefbeat-devices.py` if that ever needs
+revisiting). The fractional remainder is carried across polls, so a client
+polling every second and one polling once dispense the same volume.
+
+The pump stops on its own after `custom_pump_time` from `/configuration`
+(30 s by default), or as soon as `volume_left` reaches 0. A fill only advances
+when `/dashboard` is polled, so nothing runs away while no client is watching,
+and polling faster does not dispense more water.
+
+`days_till_empty` is deliberately left untouched: the firmware derives it from
+a running average this simulator does not keep.
+
 ## Fixture Exporter (Create Fixtures)
 
 `run.py` is a Python-based fixture exporter for the ReefBeat Devices Simulator.

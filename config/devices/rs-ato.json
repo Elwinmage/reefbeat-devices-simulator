@@ -4,6 +4,10 @@
     "no_GET": [],
     "PUT": [
       "/configuration"
+    ],
+    "POST": [
+      "/manual-pump",
+      "/stop"
     ]
   },
   "post_actions": []

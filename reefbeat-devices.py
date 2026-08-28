@@ -39,6 +39,20 @@ import function_extension
 
 JSONValue = Any
 
+# --- ReefATO+ manual fill -----------------------------------------------------
+#
+# `flow_rate` is reported on /dashboard without a unit. Milliliters per minute
+# is the reading that makes a device self-consistent: the fixture's 1176 with a
+# `daily_volume_average` of 25000 ml works out to about 21 minutes of pumping a
+# day, which is what a mid-size system does. Read as ml/h the same numbers give
+# 8 hours a day, which no ATO pump does. Change this single constant if a pcap
+# ever settles the question.
+ATO_FLOW_RATE_PERIOD_S: float = 60.0
+
+# How long a manual fill runs before the pump stops on its own, when
+# /configuration carries no `custom_pump_time` (milliseconds).
+ATO_DEFAULT_PUMP_TIME_MS: int = 30000
+
 
 class Object(object):
     server: "MyServer | None"
@@ -126,6 +140,14 @@ class MyServer(HTTPServer):
         # DELETE /calibration only bumps the matching *last_calibration_date*
         # field, matching the real ReefRun behaviour observed in pcaps.
         self._last_calibration_type: Optional[str] = None
+        # ReefATO+ manual fill in progress, `None` when the pump is idle.
+        # `_ato_fill_started_at` is what the auto-stop timeout is measured
+        # against, `_ato_fill_last_tick` what the volume accounting consumes,
+        # and `_ato_fill_carry` holds the sub-milliliter remainder so that a
+        # burst of short polls dispenses the same volume as one long one.
+        self._ato_fill_started_at: Optional[float] = None
+        self._ato_fill_last_tick: Optional[float] = None
+        self._ato_fill_carry: float = 0.0
         # Test if local IP exists
         must_create_ip = True
         for line in (
@@ -368,6 +390,11 @@ class HttpServer(BaseHTTPRequestHandler):
         """
 
         self.log_reqst("GET")
+        # A fill in progress advances on demand: the simulator has no clock of
+        # its own, so the state it would have reached is computed when a client
+        # asks for it. Polling more often does not dispense more water.
+        if self.path == "/dashboard":
+            self._advance_manual_fill(cast(MyServer, self.server))
         data = self.get_data(self.path)
         if data is not None and cast(MyServer, self.server).is_allow(self.path, "GET"):
             self.send_response(200)
@@ -393,10 +420,19 @@ class HttpServer(BaseHTTPRequestHandler):
             None
         """
 
-        content_length_str = self.headers.get("Content-Length")
+        # `Content-Length: 0` is a non-empty header holding a falsy length, so
+        # the length is what decides whether there is a body to parse. Reading
+        # the string alone used to hand `json.loads` an empty buffer and take
+        # the connection down, which is what a plain `curl -X POST` sends.
+        content_length = int(self.headers.get("Content-Length") or 0)
         r_data: Any = ""
-        if content_length_str:
-            r_data = json.loads(self.rfile.read(int(content_length_str)))
+        if content_length:
+            body = self.rfile.read(content_length)
+            try:
+                r_data = json.loads(body)
+            except ValueError:
+                self.log("%s %s: ignoring non-JSON body" % (method, self.path))
+                r_data = ""
         self.log_reqst(method, r_data)
         data = self.get_data(self.path)
         server = cast(MyServer, self.server)
@@ -483,6 +519,23 @@ class HttpServer(BaseHTTPRequestHandler):
                 "message": calibration_responses[self.path],
             }
             self.wfile.write(bytes(json.dumps(resp), "utf8"))
+            return
+
+        # ReefATO+ manual fill: /manual-pump starts the pump, /stop stops it.
+        # Neither path has a fixture, so they are handled here rather than
+        # through the generic merge, like the calibration endpoints above.
+        if self.path in ("/manual-pump", "/stop") and self._is_ato(server):
+            self.log_reqst("POST")
+            content_length_str = self.headers.get("Content-Length")
+            if content_length_str:
+                self.rfile.read(int(content_length_str))
+            if self.path == "/manual-pump":
+                self._start_manual_fill(server)
+            else:
+                self._stop_manual_fill(server)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(bytes('{"success":true}', "utf8"))
             return
 
         self.recv_with_param("POST")
@@ -688,6 +741,192 @@ class HttpServer(BaseHTTPRequestHandler):
 
         server.update_db("/dashboard", {"leak_sensor": update})
         self.log("PUT /configuration: mirrored to /dashboard: %s" % update)
+
+    # -------------------------------------------------------------------------
+    # ReefATO+ manual fill
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _is_ato(server: "MyServer") -> bool:
+        """Tell whether this server simulates a ReefATO+.
+
+        Recognised from the shape of its dashboard rather than from the
+        configured device type, so a renamed or hand-written fixture still
+        works. `/stop` is a bare path that another device could plausibly
+        claim one day; this keeps the fill handlers off it.
+        """
+        entry = server._db.get("/dashboard")
+        if not entry:
+            return False
+        dashboard = entry.get("data")
+        return isinstance(dashboard, dict) and "is_pump_on" in dashboard
+
+    @staticmethod
+    def _ato_dashboard(server: "MyServer") -> Optional[dict[str, Any]]:
+        """Return the raw dashboard dict, bypassing the modifiers."""
+        entry = server._db.get("/dashboard")
+        if not entry:
+            return None
+        dashboard = entry.get("data")
+        return dashboard if isinstance(dashboard, dict) else None
+
+    def _start_manual_fill(self, server: "MyServer") -> None:
+        """Start a manual fill: run the pump and stamp the start.
+
+        `is_pump_on` is the authoritative field, the one a client watches.
+        `pump_state` and `prev_pump_state` are kept in step with it so the
+        three never contradict each other -- real payloads have been seen
+        reporting `is_pump_on: true` next to `pump_state: "off"`, but there is
+        nothing to gain from reproducing that in a simulator.
+        """
+        dashboard = self._ato_dashboard(server)
+        if dashboard is None:
+            return
+
+        now = time.time()
+        if server._ato_fill_started_at is not None:
+            # Already filling: a second press just extends nothing, the
+            # timeout still runs from the original start.
+            self.log("manual fill already running")
+            return
+
+        server._ato_fill_started_at = now
+        server._ato_fill_last_tick = now
+        server._ato_fill_carry = 0.0
+
+        server.update_db(
+            "/dashboard",
+            {
+                "is_pump_on": True,
+                "prev_pump_state": dashboard.get("pump_state", "off"),
+                "pump_state": "pump_on",
+                "last_pump_on_cause": "manual",
+            },
+        )
+        self.log("manual fill started (timeout %d ms)" % self._ato_pump_time_ms(server))
+
+    def _stop_manual_fill(self, server: "MyServer", reason: str = "stop") -> None:
+        """Stop a running fill and book it.
+
+        Accounts the volume dispensed since the last tick, then bumps the fill
+        counters and `last_fill_date` the way the firmware does at the end of a
+        fill. A `/stop` with no fill running still forces `is_pump_on` off:
+        that is what the button is for.
+        """
+        dashboard = self._ato_dashboard(server)
+        if dashboard is None:
+            return
+
+        was_filling = server._ato_fill_started_at is not None
+        if was_filling:
+            self._advance_manual_fill(server, stopping=True)
+            # `update_db` replaces the dashboard dict, so the reference taken
+            # above is stale once the final tick has been accounted.
+            dashboard = self._ato_dashboard(server) or dashboard
+
+        server._ato_fill_started_at = None
+        server._ato_fill_last_tick = None
+        server._ato_fill_carry = 0.0
+
+        update: dict[str, Any] = {
+            "is_pump_on": False,
+            "prev_pump_state": dashboard.get("pump_state", "pump_on"),
+            "pump_state": "off",
+        }
+        if was_filling:
+            update["last_fill_date"] = int(time.time())
+            for counter in ("today_fills", "total_fills"):
+                current = dashboard.get(counter)
+                if isinstance(current, (int, float)):
+                    update[counter] = int(current) + 1
+
+        server.update_db("/dashboard", update)
+        self.log("manual fill stopped (%s): %s" % (reason, update))
+
+    @staticmethod
+    def _ato_pump_time_ms(server: "MyServer") -> int:
+        """Return the manual fill timeout, in milliseconds.
+
+        Read from `/configuration`, which is where the device carries it, so a
+        fixture with a different `custom_pump_time` is honoured.
+        """
+        entry = server._db.get("/configuration")
+        config = entry.get("data") if entry else None
+        if isinstance(config, dict):
+            value = config.get("custom_pump_time")
+            if isinstance(value, (int, float)) and value > 0:
+                return int(value)
+        return ATO_DEFAULT_PUMP_TIME_MS
+
+    def _advance_manual_fill(self, server: "MyServer", stopping: bool = False) -> None:
+        """Account the water dispensed since the last tick.
+
+        Called before `/dashboard` is served and again when the fill ends, so
+        the volumes a client reads are the ones the elapsed time implies.
+        Nothing happens when no fill is running.
+
+        The pump stops on its own once `custom_pump_time` has elapsed, or once
+        the reservoir runs dry -- an empty container cannot dispense, whatever
+        the timeout says. `days_till_empty` is deliberately left alone: the
+        firmware derives it from a running average this simulator does not
+        keep, so a recomputation here would fight the fixture rather than
+        follow it.
+        """
+        if server._ato_fill_started_at is None or server._ato_fill_last_tick is None:
+            return
+        dashboard = self._ato_dashboard(server)
+        if dashboard is None:
+            return
+
+        now = time.time()
+        deadline = server._ato_fill_started_at + self._ato_pump_time_ms(server) / 1000.0
+        expired = not stopping and now >= deadline
+        # Only the water pumped up to the timeout counts, not the water that
+        # would have been pumped had nobody polled until later. Clamping here
+        # rather than in the `expired` branch alone also keeps the final tick
+        # of a timed-out fill from booking the overshoot twice.
+        now = min(now, deadline)
+
+        elapsed = max(0.0, now - server._ato_fill_last_tick)
+        server._ato_fill_last_tick = now
+
+        flow_rate = dashboard.get("flow_rate")
+        if not isinstance(flow_rate, (int, float)) or flow_rate <= 0:
+            if expired:
+                self._stop_manual_fill(server, reason="timeout")
+            return
+
+        # Carry the fraction of a milliliter across ticks: a client polling
+        # every second must end up with the same volume as one polling once.
+        server._ato_fill_carry += flow_rate * elapsed / ATO_FLOW_RATE_PERIOD_S
+        dispensed = int(server._ato_fill_carry)
+        server._ato_fill_carry -= dispensed
+
+        volume_left = dashboard.get("volume_left")
+        emptied = False
+        update: dict[str, Any] = {}
+
+        if isinstance(volume_left, (int, float)):
+            # The reservoir bounds the fill: never dispense water that is not
+            # there, and never report a negative level.
+            dispensed = min(dispensed, int(volume_left))
+            update["volume_left"] = int(volume_left) - dispensed
+            emptied = update["volume_left"] <= 0
+
+        if dispensed:
+            for counter in ("today_volume_usage", "total_volume_usage"):
+                current = dashboard.get(counter)
+                if isinstance(current, (int, float)):
+                    update[counter] = int(current) + dispensed
+
+        if update:
+            server.update_db("/dashboard", update)
+
+        if expired:
+            self._stop_manual_fill(server, reason="timeout")
+        elif emptied and not stopping:
+            # `stopping` means the caller is already inside _stop_manual_fill.
+            self._stop_manual_fill(server, reason="reservoir empty")
 
     def _handle_delete_side_effects(self, server: "MyServer") -> None:
         """Apply state side-effects when a DELETE is processed.
