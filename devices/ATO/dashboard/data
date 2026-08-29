@@ -16,9 +16,9 @@
   "daily_fills_average": null,
   "daily_volume_average": 25000,
   "days_till_empty": 5,
-  "flow_rate": 1176,
+  "flow_rate": 21760,
   "is_internet_connected": true,
-  "is_pump_on": true,
+  "is_pump_on": false,
   "last_fill_date": 1751219015,
   "last_pump_on_cause": "ec_sensor_s1",
   "leak_sensor": {
@@ -43,6 +43,6 @@
   "today_volume_usage": 0,
   "total_fills": 36,
   "total_volume_usage": 0,
-  "volume_left": 2500,
+  "volume_left": 40000,
   "water_level": "desired_level_2"
 }
