@@ -16,6 +16,9 @@
 #   simulate: play the real ATO loop, both levels coupled (see the last step)
 #   restore:  put back everything written so far, and forget it
 #
+# Writing `is_pump_on` from any step also publishes `pump_state` and
+# `prev_pump_state`, so the three never contradict each other on screen.
+#
 # Steps run one after another — there is no parallelism. The two water levels
 # are not independent anyway: the reservoir only empties while the pump fills,
 # so `simulate` models that coupling rather than running two tracks at once.
@@ -62,7 +65,7 @@ sequence:
   # 2. Pump appears, reservoir full
   # ---------------------------------------------------------------- #
   - name: Pump added, reservoir full
-    wait: 8
+    wait: 4
     set:
       mode: auto
       volume_left: 100%
@@ -71,7 +74,7 @@ sequence:
   # 3. Leak probe appears, armed and dry
   # ---------------------------------------------------------------- #
   - name: Leak detector added, operational
-    wait: 8
+    wait: 4
     set:
       connected: "on"
       enabled: "on"
@@ -83,25 +86,41 @@ sequence:
   #    dim and greyscale rather than disappearing
   # ---------------------------------------------------------------- #
   - name: Leak detector disarmed
-    wait: 8
+    wait: 4
     set:
       enabled: "off"
 
   # ---------------------------------------------------------------- #
-  # 5. Water where it should not be. `status` is the PROBLEM sensor the
-  #    card animates; `leak_sensor_status` is the raw firmware value,
-  #    set alongside so a dashboard showing it stays coherent.
+  # 5. Water where it should not be.
+  #
+  #    `status` is the PROBLEM sensor the card animates; the raw
+  #    `leak_sensor_status` names the side the water came from, and the
+  #    card puts the puddle there: left under the RO reservoir, right
+  #    under the sump. The three cases are played in turn so both
+  #    positions and the fallback can be checked.
   # ---------------------------------------------------------------- #
-  - name: Leak detected
-    wait: 8
+  - name: Leak detected, aquarium side
+    wait: 4
     set:
       enabled: "on"
       status: "on"
       leak_sensor_status: aquarium_water_leak
       buzzer_on: "on"
 
+  - name: Leak detected, RO/DI side
+    wait: 4
+    set:
+      leak_sensor_status: rodi_water_leak
+
+  # The PROBLEM sensor fires but the raw status is unreadable: the card
+  # must spread the puddle over the whole strip rather than guess a side.
+  - name: Leak detected, side unknown
+    wait: 4
+    set:
+      leak_sensor_status: unavailable
+
   - name: Leak cleared
-    wait: 10
+    wait: 4
     set:
       status: "off"
       leak_sensor_status: dry
@@ -113,12 +132,12 @@ sequence:
   #    missing_sensor — swap it in to check each one.
   # ---------------------------------------------------------------- #
   - name: Pump fault
-    wait: 8
+    wait: 4
     set:
       mode: stalled
 
   - name: Pump fault cleared
-    wait: 10
+    wait: 4
     set:
       mode: auto
 
@@ -128,7 +147,7 @@ sequence:
   #    here too since the card treats either as a problem.
   # ---------------------------------------------------------------- #
   - name: Level probe unplugged
-    wait: 8
+    wait: 4
     set:
       ato_sensor_connected: "off"
       is_sensor_error: "on"
@@ -137,7 +156,7 @@ sequence:
       water_level: error
 
   - name: Level probe back
-    wait: 10
+    wait: 4
     set:
       ato_sensor_connected: "on"
       is_sensor_error: "off"
@@ -150,13 +169,13 @@ sequence:
   #    below never produces it, so it has to be staged.
   # ---------------------------------------------------------------- #
   - name: High water alert
-    wait: 8
+    wait: 4
     set:
       water_level: above
       mode: high_water
 
   - name: High water cleared
-    wait: 10
+    wait: 4
     set:
       water_level: desired_level_2
       mode: auto
@@ -169,9 +188,15 @@ sequence:
   #
   #    This is the one worth filming: volume_left and days_till_empty
   #    only move while the pump runs, which a plain ramp would not show.
+  #
+  #    `is_pump_on` follows the pump through the loop, and with it
+  #    `pump_state` / `prev_pump_state`, which the card and the history
+  #    read. `cause` is what `last_pump_on_cause` reports when a top-up
+  #    starts: the level sensor, since this is an automatic fill and not
+  #    a press of the fill button.
   # ---------------------------------------------------------------- #
   - name: Top-up cycles until the reservoir runs dry
-    wait: 5
+    wait: 4
     simulate:
       from: 100%
       to: 0%
@@ -182,13 +207,20 @@ sequence:
       trigger: below            # sump level that starts the pump
       target: desired_level_2   # sump level that stops it
       start_level: desired_level_2
+      cause: ec_sensor_s1       # ec_sensor_s2 for the second level
       # max_cycles: 2     # cut it short instead of draining the whole tank
+      # The consumption counters follow the reservoir, so the history chart
+      # fills in as this runs. Start them mid-day to open on a non-empty
+      # chart rather than on a flat zero.
+      used_from: 0
+      fills_from: 0
+      total_fills_from: 1111
 
   # ---------------------------------------------------------------- #
   # 10. Do not end the recording on a fault
   # ---------------------------------------------------------------- #
   - name: All clear
-    wait: 8
+    wait: 4
     set:
       mode: auto
       volume_left: 100%

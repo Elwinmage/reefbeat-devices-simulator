@@ -36,6 +36,24 @@ Usage:
     ./ato_timelapse.py --device "Simu RSATO" --scenario ato_demo.yaml --dry-run
     ./ato_timelapse.py --device "Simu RSATO" --scenario ato_demo.yaml
     ./ato_timelapse.py --profile lab             # another instance
+
+The `simulate` step also feeds `today_volume_usage`, `total_volume_usage`,
+`today_fills` and `total_fills`. Home Assistant records everything written
+through /api/states, so the recorder picks those up and a history chart draws
+them as real data. Two things to know when filming one:
+
+  - History cannot be backdated. The curve starts filling from the moment the
+    script runs, so a chart pinned to the calendar day will show a short
+    segment near "now" rather than a full day. Use a rolling window of a few
+    minutes (`hours: 0.1`) to fill the width.
+  - The integration overwrites these entities on its next poll, and that
+    overwrite is recorded too. Raise its scan interval for the shoot.
+
+Every write of `is_pump_on`, wherever it comes from, also publishes the
+`pump_state` and `prev_pump_state` the firmware carries next to it, so a
+dashboard never shows a running pump beside `pump_state: off`. The `simulate`
+step additionally sets `last_pump_on_cause`, since it knows what started the
+fill it is playing.
 """
 
 import argparse
@@ -416,6 +434,9 @@ class Player:
         self.verbose = verbose
         self.stopper = Stopper()
         self.snapshot: Dict[str, Dict[str, Any]] = {}
+        # Last `pump_state` published, so the next write can report it as
+        # `prev_pump_state`. Seeded from the device on the first write.
+        self._pump_state: Optional[str] = None
 
     # -- plumbing ---------------------------------------------------------- #
 
@@ -480,10 +501,37 @@ class Player:
         Writing `volume_left` also refreshes `days_till_empty` when the
         scenario declared an autonomy: a countdown frozen at four days while
         the tank visibly drains reads as a bug on video.
+
+        Writing `is_pump_on` likewise refreshes `pump_state` and
+        `prev_pump_state`. `is_pump_on` is the field to watch, but the
+        firmware carries those two next to it, and a dashboard showing a
+        running pump beside `pump_state: off` reads as the same kind of bug.
         """
         self._write_one(role, value)
         if role == "volume_left":
             self._write_days_till_empty(value)
+        elif role == "is_pump_on":
+            self._write_pump_state(value)
+
+    def _write_pump_state(self, is_pump_on: Any) -> None:
+        """Publish the pump state fields matching an `is_pump_on` value.
+
+        Skipped silently for any role the device does not expose, so a
+        scenario stays valid on a firmware reporting a subset of them.
+
+        :param is_pump_on: the value just written, `"on"` or `"off"`
+        """
+        state = "pump_on" if str(is_pump_on) == "on" else "off"
+        if self._pump_state is None:
+            # First write of the run: the device's own value is the previous
+            # one, not a guess.
+            current = self.roles.get("pump_state")
+            self._pump_state = str(current["state"]) if current else "off"
+        previous, self._pump_state = self._pump_state, state
+        if self.has("prev_pump_state"):
+            self._write_one("prev_pump_state", previous)
+        if self.has("pump_state"):
+            self._write_one("pump_state", state)
 
     def _write_days_till_empty(self, volume: Any) -> None:
         """Publish the autonomy matching a reservoir level.
@@ -628,6 +676,7 @@ class Player:
         fill = float(spec.get("fill", 1.5))
         frames = max(1, int(spec.get("frames", 5)))
         max_cycles = int(spec.get("max_cycles", 0))
+        cause = str(spec.get("cause", "ec_sensor_s1"))
 
         trigger = str(spec.get("trigger", "below"))
         target = str(spec.get("target", "desired_level_2"))
@@ -656,6 +705,15 @@ class Player:
         self.write("volume_left", volume)
         self.write("is_pump_on", "off")
 
+        # The counters the history chart reads. They are the mirror image of
+        # the reservoir: what leaves the container is what was dispensed. Home
+        # Assistant records every state written through /api/states, so these
+        # feed the recorder and the chart draws them like real data.
+        used = resolve_amount(spec.get("used_from", 0), full_scale)
+        fills = int(spec.get("fills_from", 0))
+        total = int(spec.get("total_fills_from", fills))
+        self.write_counters(used, fills, total)
+
         rungs = target_idx - trigger_idx
         per_frame = consumption / (rungs * frames)
         cycles = 0
@@ -680,6 +738,13 @@ class Player:
 
             # Top-up: the pump runs, the sump climbs, the reservoir gives up
             # `consumption` spread over the whole climb.
+            #
+            # `last_pump_on_cause` names what started this fill. The loop
+            # models an automatic top-up, so the default is the level sensor
+            # that reached the trigger rung -- `manual` is what the fill
+            # button produces, and would misdescribe what is on screen.
+            if self.has("last_pump_on_cause"):
+                self.write("last_pump_on_cause", cause)
             self.write("is_pump_on", "on")
             for _rung in range(rungs):
                 for _frame in range(frames):
@@ -693,6 +758,8 @@ class Player:
                     if abs(volume - floor) < per_frame / 1000:
                         volume = floor
                     self.write("volume_left", volume)
+                    used += per_frame
+                    self.write_counters(used, fills, total)
                     if volume <= floor:
                         # The reservoir ran out mid-climb. A pump with nothing
                         # to pump cannot finish raising the sump, so the level
@@ -703,10 +770,34 @@ class Player:
                 self.write("water_level", WATER_LEVELS[level_idx])
             self.write("is_pump_on", "off")
 
+            # One completed top-up is one fill.
+            fills += 1
+            total += 1
+            self.write_counters(used, fills, total)
+
             cycles += 1
             print(f"    cycle {cycles} done, reservoir at {volume:g}")
             if max_cycles and cycles >= max_cycles:
                 return
+
+    def write_counters(self, used: float, fills: int, total: int) -> None:
+        """Publish the dispensed-volume and fill counters.
+
+        Skipped silently for any role the device does not expose, so a
+        scenario stays valid on a firmware reporting a subset of them.
+
+        :param used: volume dispensed from the current container
+        :param fills: number of fills today
+        :param total: lifetime number of fills
+        """
+        for role, value in (
+            ("today_volume_usage", round(used)),
+            ("total_volume_usage", round(used)),
+            ("today_fills", fills),
+            ("total_fills", total),
+        ):
+            if self.has(role):
+                self.write(role, value)
 
     def run_dry(self, level_idx: int) -> None:
         """Leave the device in the state an empty reservoir produces.
