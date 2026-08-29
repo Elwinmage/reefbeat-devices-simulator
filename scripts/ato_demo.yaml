@@ -108,19 +108,19 @@ sequence:
       buzzer_on: "on"
 
   - name: Leak detected, RO/DI side
-    wait: 4
+    wait: 8
     set:
       leak_sensor_status: rodi_water_leak
 
   # The PROBLEM sensor fires but the raw status is unreadable: the card
   # must spread the puddle over the whole strip rather than guess a side.
   - name: Leak detected, side unknown
-    wait: 4
+    wait: 8
     set:
       leak_sensor_status: unavailable
 
   - name: Leak cleared
-    wait: 4
+    wait: 8
     set:
       status: "off"
       leak_sensor_status: dry
