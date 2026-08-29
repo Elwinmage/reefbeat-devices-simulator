@@ -86,6 +86,11 @@ class AccessControl(Protocol):
 class ModifierFunction(Protocol):
     name: str
     params: Any
+    # Set by the scheduler once a `only_once` / `only_startup` modifier has
+    # run, so it is skipped on later ticks. Declared here because the flag
+    # is written onto the function object itself; the read side uses
+    # getattr() with a default, so it need not exist on the first tick.
+    _fired: bool
 
 
 class ServerConfig(Protocol):
@@ -278,7 +283,7 @@ class MyServer(HTTPServer):
                     if current_count != trigger_tick:
                         continue
                     # Fire and mark as done
-                    setattr(func, "_fired", True)
+                    func._fired = True
                 # else: no scheduling constraint → run every time
 
                 _ext = getattr(function_extension, func.name)

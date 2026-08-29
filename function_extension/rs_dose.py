@@ -2,6 +2,11 @@
 Module pour gérer la diminution du volume des suppléments dans un système de dosage automatique.
 """
 
+# Postponed evaluation of annotations: lets this module use `X | None`
+# annotations on Python 3.9, which is what pyrightconfig.json targets, and
+# matches reefbeat-devices.py and run.py.
+from __future__ import annotations
+
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from copy import deepcopy

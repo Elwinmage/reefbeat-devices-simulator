@@ -1,7 +1,7 @@
-from typing import Any, Dict
+from typing import Any
 
 
-def set_value(path: str, data: Dict[str, Any], params: Any, ctx: Any):
+def set_value(path: str, data: dict[str, Any], params: Any, ctx: Any):
     if path == params.path:
         keys = params.name.split("/")
         current = data
@@ -13,7 +13,7 @@ def set_value(path: str, data: Dict[str, Any], params: Any, ctx: Any):
     return data
 
 
-def increase_value(path: str, data: Dict[str, Any], params: Any, ctx: Any):
+def increase_value(path: str, data: dict[str, Any], params: Any, ctx: Any):
     if path == params.path:
         data[params.name] += params.offset
         if data[params.name] > params.limit:
@@ -21,7 +21,7 @@ def increase_value(path: str, data: Dict[str, Any], params: Any, ctx: Any):
     return data
 
 
-def decrease_value(path: str, data: Dict[str, Any], params: Any, ctx: Any):
+def decrease_value(path: str, data: dict[str, Any], params: Any, ctx: Any):
     if path == params.path:
         data[params.name] -= params.offset
         if data[params.name] < params.limit:

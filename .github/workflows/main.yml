@@ -5,4 +5,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Pinned to the version .pre-commit-config.yaml uses. Left unpinned the
+      # action tracks the latest release, so a new ruff can fail CI on a commit
+      # that passed pre-commit an hour earlier.
       - uses: astral-sh/ruff-action@v3
+        with:
+          version: 0.14.9
