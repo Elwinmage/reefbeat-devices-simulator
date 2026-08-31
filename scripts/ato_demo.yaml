@@ -60,12 +60,14 @@ sequence:
       ato_sensor_connected: "on"
       is_sensor_error: "off"
       check_sensor: "off"
+      last_alert_message: "Error!"
+      last_message: "Message"
 
   # ---------------------------------------------------------------- #
   # 2. Pump appears, reservoir full
   # ---------------------------------------------------------------- #
   - name: Pump added, reservoir full
-    wait: 4
+    wait: 30
     set:
       mode: auto
       volume_left: 100%
