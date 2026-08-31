@@ -66,7 +66,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 DEFAULT_URL = "http://homeassistant.local:8123"
 
@@ -129,11 +129,11 @@ class HomeAssistant:
             return None
         return json.loads(body)
 
-    def states(self) -> List[Dict[str, Any]]:
+    def states(self) -> list[dict[str, Any]]:
         """Fetch the whole state machine."""
         return self._request("GET", "/states") or []
 
-    def set_state(self, entity_id: str, state: str, attributes: Dict[str, Any]) -> None:
+    def set_state(self, entity_id: str, state: str, attributes: dict[str, Any]) -> None:
         """Overwrite one entity in the state machine."""
         self._request(
             "POST",
@@ -141,7 +141,7 @@ class HomeAssistant:
             {"state": state, "attributes": attributes},
         )
 
-    def render(self, template: str) -> Optional[str]:
+    def render(self, template: str) -> str | None:
         """Render a Jinja template server-side.
 
         /api/template answers plain text, not JSON, and is the only way to
@@ -193,7 +193,7 @@ def slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
 
-def collect_devices(hass: HomeAssistant) -> Dict[str, Dict[str, Dict[str, Any]]]:
+def collect_devices(hass: HomeAssistant) -> dict[str, dict[str, dict[str, Any]]]:
     """Group every ReefBeat entity by the device it belongs to.
 
     Uses the device registry through the template API. If that is refused,
@@ -209,7 +209,7 @@ def collect_devices(hass: HomeAssistant) -> Dict[str, Dict[str, Dict[str, Any]]]
     if not rendered or "\t" not in rendered:
         return _collect_devices_fallback(by_id)
 
-    devices: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    devices: dict[str, dict[str, dict[str, Any]]] = {}
     for line in rendered.splitlines():
         parts = line.split("\t")
         if len(parts) != 3:
@@ -227,8 +227,8 @@ def collect_devices(hass: HomeAssistant) -> Dict[str, Dict[str, Dict[str, Any]]]
 
 
 def _collect_devices_fallback(
-    by_id: Dict[str, Dict[str, Any]],
-) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    by_id: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, dict[str, Any]]]:
     """Group by the leading words of the entity_id, registry unavailable.
 
     Entities of one device share a long entity_id prefix, but where the device
@@ -237,7 +237,7 @@ def _collect_devices_fallback(
     let --device select something, and --show-roles will make a bad split
     obvious.
     """
-    devices: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    devices: dict[str, dict[str, dict[str, Any]]] = {}
     for entity_id, state in by_id.items():
         role = (state.get("attributes") or {}).get("reef_role")
         if not role:
@@ -249,8 +249,8 @@ def _collect_devices_fallback(
 
 
 def ato_devices(
-    devices: Dict[str, Dict[str, Dict[str, Any]]],
-) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    devices: dict[str, dict[str, dict[str, Any]]],
+) -> dict[str, dict[str, dict[str, Any]]]:
     """Keep only the devices that look like a ReefATO+."""
     return {
         slug: roles
@@ -260,8 +260,8 @@ def ato_devices(
 
 
 def pick_any_device(
-    hass: HomeAssistant, wanted: Optional[str]
-) -> Tuple[str, Dict[str, Dict[str, Any]]]:
+    hass: HomeAssistant, wanted: str | None
+) -> tuple[str, dict[str, dict[str, Any]]]:
     """Resolve --device against every ReefBeat device, ATO or not.
 
     Used by --show-roles, which has to be able to inspect a device precisely
@@ -287,8 +287,8 @@ def pick_any_device(
 
 
 def pick_device(
-    hass: HomeAssistant, wanted: Optional[str]
-) -> Tuple[str, Dict[str, Dict[str, Any]]]:
+    hass: HomeAssistant, wanted: str | None
+) -> tuple[str, dict[str, dict[str, Any]]]:
     """Resolve the --device argument to one ATO device.
 
     :param hass: the API client
@@ -334,7 +334,7 @@ def pick_device(
 # --------------------------------------------------------------------------- #
 
 
-def load_scenario(path: str) -> Dict[str, Any]:
+def load_scenario(path: str) -> dict[str, Any]:
     """Read a scenario from YAML or JSON.
 
     YAML is used when PyYAML is importable, which it always is inside a Home
@@ -361,7 +361,7 @@ def load_scenario(path: str) -> Dict[str, Any]:
     return loaded
 
 
-def resolve_amount(raw: Any, full_scale: Optional[float]) -> float:
+def resolve_amount(raw: Any, full_scale: float | None) -> float:
     """Turn a scenario value into a number.
 
     Accepts a plain number, or a percentage of the reservoir capacity such as
@@ -418,29 +418,29 @@ class Player:
     def __init__(
         self,
         hass: HomeAssistant,
-        roles: Dict[str, Dict[str, Any]],
+        roles: dict[str, dict[str, Any]],
         dry_run: bool = False,
         verbose: bool = False,
     ) -> None:
         self.hass = hass
         self.roles = roles
-        self.override_capacity: Optional[float] = None
+        self.override_capacity: float | None = None
         # Days of autonomy at a full reservoir. When set, every write of
         # volume_left publishes a matching days_till_empty.
-        self.days_when_full: Optional[float] = None
+        self.days_when_full: float | None = None
         # Roles a `set` step asked for that this device does not expose.
         self.skipped: set = set()
         self.dry_run = dry_run
         self.verbose = verbose
         self.stopper = Stopper()
-        self.snapshot: Dict[str, Dict[str, Any]] = {}
+        self.snapshot: dict[str, dict[str, Any]] = {}
         # Last `pump_state` published, so the next write can report it as
         # `prev_pump_state`. Seeded from the device on the first write.
-        self._pump_state: Optional[str] = None
+        self._pump_state: str | None = None
 
     # -- plumbing ---------------------------------------------------------- #
 
-    def entity(self, role: str) -> Dict[str, Any]:
+    def entity(self, role: str) -> dict[str, Any]:
         """Look up the entity backing a role, failing with a usable message."""
         state = self.roles.get(role)
         if state is None:
@@ -452,7 +452,7 @@ class Player:
         """Whether the device exposes a role."""
         return role in self.roles
 
-    def capacity(self) -> Optional[float]:
+    def capacity(self) -> float | None:
         """Reservoir capacity, the reference for percentages.
 
         Expressed in the unit of `volume_left`, which the firmware reports in
@@ -582,7 +582,7 @@ class Player:
         if not self.dry_run:
             self.stopper.sleep(seconds)
 
-    def do_set(self, assignments: Dict[str, Any]) -> None:
+    def do_set(self, assignments: dict[str, Any]) -> None:
         for role, raw in assignments.items():
             if not self.has(role):
                 # Skipped rather than fatal: a scenario is written against the
@@ -600,7 +600,7 @@ class Player:
             print(f"    set {role} = {shown}{suffix}")
             self.write(role, value)
 
-    def do_ramp(self, spec: Dict[str, Any]) -> None:
+    def do_ramp(self, spec: dict[str, Any]) -> None:
         role = spec.get("role")
         if not role:
             raise SystemExit("a `ramp` step needs a `role`.")
@@ -628,7 +628,7 @@ class Player:
             self.wait_tick(every)
             self.write(role, value)
 
-    def do_cycle(self, spec: Dict[str, Any]) -> None:
+    def do_cycle(self, spec: dict[str, Any]) -> None:
         role = spec.get("role")
         if not role:
             raise SystemExit("a `cycle` step needs a `role`.")
@@ -654,7 +654,7 @@ class Player:
                 self.write(role, value)
                 self.wait_tick(every)
 
-    def do_simulate(self, spec: Dict[str, Any]) -> None:
+    def do_simulate(self, spec: dict[str, Any]) -> None:
         """Play the real ATO loop: evaporation, top-up, reservoir draining.
 
         The two levels are not independent, so running them as parallel tracks
@@ -817,7 +817,7 @@ class Player:
 
     # -- driver ------------------------------------------------------------ #
 
-    def play(self, scenario: Dict[str, Any], loop: bool = False) -> int:
+    def play(self, scenario: dict[str, Any], loop: bool = False) -> int:
         steps = scenario.get("sequence") or []
         if not steps:
             raise SystemExit("the scenario has an empty `sequence`.")
@@ -839,7 +839,7 @@ class Player:
                         self.do_cycle(step["cycle"])
                     if "simulate" in step:
                         self.do_simulate(step["simulate"])
-                    if "restore" in step and step["restore"]:
+                    if step.get("restore"):
                         self.restore()
                         self.snapshot.clear()
                 if not loop:
@@ -875,7 +875,7 @@ def print_devices(hass: HomeAssistant) -> int:
     return 0
 
 
-def print_roles(slug: str, roles: Dict[str, Dict[str, Any]]) -> int:
+def print_roles(slug: str, roles: dict[str, dict[str, Any]]) -> int:
     """Print the roles of one device with their current state."""
     width = max(len(role) for role in roles)
     value_width = max(
@@ -901,7 +901,7 @@ def print_roles(slug: str, roles: Dict[str, Dict[str, Any]]) -> int:
 # --------------------------------------------------------------------------- #
 
 
-def find_config(explicit: Optional[str]) -> Optional[str]:
+def find_config(explicit: str | None) -> str | None:
     """Locate the configuration file.
 
     :param explicit: the --config argument, or None
@@ -926,7 +926,7 @@ def find_config(explicit: Optional[str]) -> Optional[str]:
     return None
 
 
-def load_config(path: Optional[str], profile: str) -> Dict[str, str]:
+def load_config(path: str | None, profile: str) -> dict[str, str]:
     """Read one profile out of the INI configuration file.
 
     The file holds a long-lived token, so a readable-by-others file is worth a
@@ -960,7 +960,7 @@ def load_config(path: Optional[str], profile: str) -> Dict[str, str]:
         known = ", ".join(parser.sections()) or "none"
         raise SystemExit(f"{path}: no [{profile}] profile. Found: {known}")
 
-    settings: Dict[str, str] = {}
+    settings: dict[str, str] = {}
     # [default] is the base, the named profile overrides it, so a file can
     # share a url between profiles and only vary the token.
     for section in ("default", profile):
@@ -970,7 +970,7 @@ def load_config(path: Optional[str], profile: str) -> Dict[str, str]:
 
 
 def resolve_credentials(
-    url: Optional[str], token: Optional[str], config: Dict[str, str]
+    url: str | None, token: str | None, config: dict[str, str]
 ) -> tuple:
     """Work out which Home Assistant instance to talk to, and with what.
 

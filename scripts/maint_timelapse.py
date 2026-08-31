@@ -50,7 +50,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 DEFAULT_URL = "http://homeassistant.local:8123"
 # Inside an add-on the Supervisor proxies the core API under this host
@@ -102,18 +102,18 @@ class HomeAssistant:
             raise SystemExit(f"Cannot reach {self.url}: {err.reason}") from err
         return json.loads(body) if body else None
 
-    def states(self) -> List[Dict[str, Any]]:
+    def states(self) -> list[dict[str, Any]]:
         """Return every state known to Home Assistant."""
         return self._request("GET", "/states")
 
-    def state(self, entity_id: str) -> Dict[str, Any]:
+    def state(self, entity_id: str) -> dict[str, Any]:
         """Return one state object.
 
         :param entity_id: the entity to read
         """
         return self._request("GET", f"/states/{entity_id}")
 
-    def set_state(self, entity_id: str, state: str, attributes: Dict[str, Any]) -> None:
+    def set_state(self, entity_id: str, state: str, attributes: dict[str, Any]) -> None:
         """Overwrite a state machine entry.
 
         :param entity_id: the entity to overwrite
@@ -132,7 +132,7 @@ class HomeAssistant:
 # --------------------------------------------------------------------------- #
 
 
-def is_maintenance_state(state: Dict[str, Any]) -> bool:
+def is_maintenance_state(state: dict[str, Any]) -> bool:
     """Tell whether a state looks like a maintenance action button.
 
     Mirrors is_maintenance_state() in the card: a button carrying a
@@ -152,7 +152,7 @@ def is_maintenance_state(state: Dict[str, Any]) -> bool:
     return isinstance(task_key, str) and bool(task_key)
 
 
-def status_of(days_left: Optional[float], interval_days: float) -> str:
+def status_of(days_left: float | None, interval_days: float) -> str:
     """Derive the status the card would display.
 
     :param days_left: remaining days, None when never reset
@@ -167,7 +167,7 @@ def status_of(days_left: Optional[float], interval_days: float) -> str:
     return "warning" if days_left <= threshold else "ok"
 
 
-def current_days_left(attributes: Dict[str, Any]) -> Optional[int]:
+def current_days_left(attributes: dict[str, Any]) -> int | None:
     """Read `days_left` as an integer.
 
     :param attributes: the attributes of a maintenance button
@@ -182,7 +182,7 @@ def current_days_left(attributes: Dict[str, Any]) -> Optional[int]:
         return None
 
 
-def with_days_left(attributes: Dict[str, Any], value: int) -> Dict[str, Any]:
+def with_days_left(attributes: dict[str, Any], value: int) -> dict[str, Any]:
     """Build attributes carrying a new `days_left`.
 
     Keeps `days_left`, `overdue` and `last_reset` consistent with each other,
@@ -225,8 +225,8 @@ def with_days_left(attributes: Dict[str, Any], value: int) -> Dict[str, Any]:
 
 
 def seed_attributes(
-    attributes: Dict[str, Any], start: int, floor: int
-) -> Optional[Dict[str, Any]]:
+    attributes: dict[str, Any], start: int, floor: int
+) -> dict[str, Any] | None:
     """Force the starting point of a countdown.
 
     Unlike a tick, this applies to a task that was never reset too: an
@@ -245,8 +245,8 @@ def seed_attributes(
 
 
 def shift_attributes(
-    attributes: Dict[str, Any], step: int, floor: int
-) -> Optional[Dict[str, Any]]:
+    attributes: dict[str, Any], step: int, floor: int
+) -> dict[str, Any] | None:
     """Build the attribute set for one tick of the fake clock.
 
     A task that was never reset is left alone: it has no deadline to move.
@@ -287,8 +287,8 @@ def parse_target(spec: str) -> tuple:
 
 
 def resolve_targets(
-    hass: HomeAssistant, requested: List[str], take_all: bool, default_start
-) -> List[tuple]:
+    hass: HomeAssistant, requested: list[str], take_all: bool, default_start
+) -> list[tuple]:
     """Collect the state objects to animate and their starting point.
 
     :param hass: the API client
@@ -320,7 +320,7 @@ def resolve_targets(
     ]
 
 
-def print_tasks(states: List[Dict[str, Any]]) -> None:
+def print_tasks(states: list[dict[str, Any]]) -> None:
     """Print a table of maintenance tasks.
 
     :param states: the state objects to print
@@ -342,10 +342,10 @@ def print_tasks(states: List[Dict[str, Any]]) -> None:
             status = "?"
         shown = "never" if days_left is None else str(days_left)
         name = state["entity_id"].ljust(width)
-        print(f"{name}  {shown:>9}  {str(interval):>8}  {status}")
+        print(f"{name}  {shown:>9}  {interval!s:>8}  {status}")
 
 
-def restore(hass: HomeAssistant, snapshot: Dict[str, Dict[str, Any]]) -> None:
+def restore(hass: HomeAssistant, snapshot: dict[str, dict[str, Any]]) -> None:
     """Put the captured states back.
 
     :param hass: the API client

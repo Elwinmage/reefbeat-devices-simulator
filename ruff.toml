@@ -1,0 +1,25 @@
+# Ruff configuration for the ReefBeat Devices Simulator.
+#
+# This file exists mainly so that ruff stops looking. Without a configuration
+# in the repository root, ruff walks up the filesystem and adopts the first
+# config it finds above the checkout -- so the same command reports a different
+# set of errors depending on where the repository happens to be cloned, and
+# `--fix` rewrites the code according to rules this project never chose. CI,
+# which checks out into a bare directory, then sees none of it.
+#
+# `target-version` matters for more than style: without it ruff assumed a
+# recent Python and its fixes introduced `X | Y` unions and attribute
+# assignment that pyright, pinned to 3.9 in pyrightconfig.json, then rejected.
+# Keep the two files in step.
+target-version = "py39"
+
+line-length = 88
+
+[lint]
+# The default rule set, stated explicitly rather than inherited: pycodestyle
+# errors, Pyflakes. This is what the GitHub workflow enforces, so what passes
+# here passes there.
+select = ["E4", "E7", "E9", "F"]
+
+[format]
+docstring-code-format = true

@@ -10,11 +10,11 @@ Normal      → dashboard intensity follows the active schedule ti
 
 import datetime
 import random
-from typing import Any, Dict, List
+from typing import Any
 
 # Per-pump store for the last known schedule intensity before disable.
 # Keyed by (server-name, pump_key) so multiple RUN instances don't collide.
-_saved_intensity: Dict[tuple, int] = {}
+_saved_intensity: dict[tuple, int] = {}
 
 # Plausible body temperature range (°C) reported by a running ReefRun pump.
 _TEMP_MIN = 38.0
@@ -24,7 +24,7 @@ _TEMP_STEP = 0.2
 
 # Per-pump temperature state: key -> [current_value, low_bound, high_bound].
 # Keyed by (server-name, pump_key), like _saved_intensity.
-_temperature: Dict[tuple, List[float]] = {}
+_temperature: dict[tuple, list[float]] = {}
 
 
 def _find_active_segment(schedule: list, now_minutes: int) -> dict:
@@ -39,8 +39,8 @@ def _find_active_segment(schedule: list, now_minutes: int) -> dict:
 
 
 def sync_pump_intensity(
-    path: str, data: Dict[str, Any], params: Any, ctx: Any
-) -> Dict[str, Any]:
+    path: str, data: dict[str, Any], params: Any, ctx: Any
+) -> dict[str, Any]:
     """Sync schedule intensity between /pump/settings and /dashboard.
 
     Behaviour:
@@ -119,7 +119,7 @@ def sync_pump_intensity(
     return data
 
 
-def _pump_is_present(pump: Dict[str, Any]) -> bool:
+def _pump_is_present(pump: dict[str, Any]) -> bool:
     """Return True when the dashboard entry describes a connected pump."""
     if pump.get("missing_pump"):
         return False
@@ -127,8 +127,8 @@ def _pump_is_present(pump: Dict[str, Any]) -> bool:
 
 
 def simulate_pump_temperature(
-    path: str, data: Dict[str, Any], params: Any, ctx: Any
-) -> Dict[str, Any]:
+    path: str, data: dict[str, Any], params: Any, ctx: Any
+) -> dict[str, Any]:
     """Keep a plausible ``temperature`` on /dashboard for each pump.
 
     Real hardware never reports 0 °C for a connected pump, but the simulator

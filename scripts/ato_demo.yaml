@@ -60,12 +60,14 @@ sequence:
       ato_sensor_connected: "on"
       is_sensor_error: "off"
       check_sensor: "off"
+      last_alert_message: "Error!"
+      last_message: "Message"
 
   # ---------------------------------------------------------------- #
   # 2. Pump appears, reservoir full
   # ---------------------------------------------------------------- #
   - name: Pump added, reservoir full
-    wait: 4
+    wait: 30
     set:
       mode: auto
       volume_left: 100%
@@ -108,19 +110,19 @@ sequence:
       buzzer_on: "on"
 
   - name: Leak detected, RO/DI side
-    wait: 4
+    wait: 8
     set:
       leak_sensor_status: rodi_water_leak
 
   # The PROBLEM sensor fires but the raw status is unreadable: the card
   # must spread the puddle over the whole strip rather than guess a side.
   - name: Leak detected, side unknown
-    wait: 4
+    wait: 8
     set:
       leak_sensor_status: unavailable
 
   - name: Leak cleared
-    wait: 4
+    wait: 8
     set:
       status: "off"
       leak_sensor_status: dry
