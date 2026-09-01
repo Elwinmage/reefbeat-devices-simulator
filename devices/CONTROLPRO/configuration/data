@@ -1,15 +1,1 @@
-{
-  "danger_buzzer_config": {
-    "duty_cycle": 20,
-    "enabled": true,
-    "frequency": 6
-  },
-  "danger_debounce_seconds": 30,
-  "leak_buzzer_config": {
-    "duty_cycle": 50,
-    "enabled": true,
-    "frequency": 12
-  },
-  "leak_detector": true,
-  "shortcut_off_delay": 0
-}
+{"shortcut_off_delay":0,"leak_buzzer_config":{"enabled":true,"frequency":12,"duty_cycle":50},"danger_buzzer_config":{"enabled":true,"frequency":6,"duty_cycle":20},"leak_detector":true,"danger_debounce_seconds":30}
