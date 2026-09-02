@@ -2,7 +2,9 @@
   "type": "RSCONTROLLITE",
   "access": {
     "no_GET": [],
-    "PUT": []
+    "PUT": [],
+    "POST": ["/maintenance"],
+    "DELETE": ["/maintenance"]
   },
   "post_actions": []
 }

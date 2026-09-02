@@ -7,7 +7,8 @@
     ],
     "POST": [
       "/manual-pump",
-      "/stop"
+      "/stop",
+      "/maintenance"
     ]
   },
   "post_actions": []
