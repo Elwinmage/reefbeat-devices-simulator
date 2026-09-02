@@ -67,7 +67,7 @@ sequence:
   # 2. Pump appears, reservoir full
   # ---------------------------------------------------------------- #
   - name: Pump added, reservoir full
-    wait: 30
+    wait: 20
     set:
       mode: auto
       volume_left: 100%
