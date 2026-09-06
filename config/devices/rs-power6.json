@@ -2,7 +2,7 @@
   "type": "RSPOWER6",
   "access": {
     "no_GET": [],
-    "PUT": [],
+    "PUT": ["/sockets/config"],
     "POST": [
       "/maintenance"
     ],

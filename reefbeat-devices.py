@@ -640,6 +640,8 @@ class HttpServer(BaseHTTPRequestHandler):
             self._handle_run_pump_settings_write(server, r_data)
         elif self.path == "/configuration":
             self._handle_ato_configuration_write(server, r_data)
+        elif self.path == "/sockets/config":
+            self._handle_power_sockets_config_write(server, r_data)
 
     def _handle_run_pump_settings_write(self, server: "MyServer", r_data: Any) -> None:
         """Mirror a ReefRun PUT /pump/settings onto /dashboard.
@@ -747,6 +749,51 @@ class HttpServer(BaseHTTPRequestHandler):
 
         server.update_db("/dashboard", {"leak_sensor": update})
         self.log("PUT /configuration: mirrored to /dashboard: %s" % update)
+
+    def _handle_power_sockets_config_write(
+        self, server: "MyServer", r_data: Any
+    ) -> None:
+        """Mirror a RSPower PUT /sockets/config onto /dashboard.
+
+        When a socket is configured (name, mode, enabled changed via the app
+        or the HA integration), the real firmware also updates the matching
+        entry in /dashboard/sockets so the polled state reflects the change
+        immediately.
+
+        The request body follows the same schema as /sockets/config/data:
+        ``{"sockets": [{"number": N, "name": "...", "mode": "...", ...}, ...]}``.
+        Only the sockets present in the payload are touched; others are left
+        unchanged.
+        """
+        if not isinstance(r_data, dict) or "/dashboard" not in server._db:
+            return
+        dashboard = server._db["/dashboard"].get("data")
+        if not isinstance(dashboard, dict):
+            return
+        dash_sockets = dashboard.get("sockets")
+        if not isinstance(dash_sockets, list):
+            return
+
+        incoming = r_data.get("sockets", [])
+        if not isinstance(incoming, list):
+            incoming = [r_data] if "number" in r_data else []
+
+        # Fields shared between /sockets/config and /dashboard/sockets
+        MIRRORED = {"name", "mode", "user_config_mode", "enabled"}
+
+        for entry in incoming:
+            if not isinstance(entry, dict) or "number" not in entry:
+                continue
+            idx = entry["number"]
+            if not isinstance(idx, int) or idx < 0 or idx >= len(dash_sockets):
+                continue
+            dash_sock = dash_sockets[idx]
+            for key in MIRRORED:
+                if key in entry:
+                    if key == "mode" and entry[key] != dash_sock.get("mode"):
+                        dash_sock["prev_mode"] = dash_sock.get("mode", "setup")
+                    dash_sock[key] = entry[key]
+            self.log("PUT /sockets/config: mirrored socket %d to /dashboard" % idx)
 
     # -------------------------------------------------------------------------
     # ReefATO+ manual fill
