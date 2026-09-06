@@ -3,8 +3,17 @@
   "access": {
     "no_GET": [],
     "PUT": [],
-    "POST": ["/maintenance"],
+    "POST": [
+      "/maintenance",
+      "/socket/0/toggle",
+      "/socket/1/toggle",
+      "/socket/2/toggle",
+      "/socket/3/toggle",
+      "/socket/4/toggle",
+      "/socket/5/toggle"
+    ],
     "DELETE": ["/maintenance"]
   },
-  "post_actions": []
+  "post_actions": [
+  ]
 }
