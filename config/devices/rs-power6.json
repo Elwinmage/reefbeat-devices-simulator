@@ -4,16 +4,54 @@
     "no_GET": [],
     "PUT": [],
     "POST": [
-      "/maintenance",
-      "/socket/0/toggle",
-      "/socket/1/toggle",
-      "/socket/2/toggle",
-      "/socket/3/toggle",
-      "/socket/4/toggle",
-      "/socket/5/toggle"
+      "/maintenance"
     ],
-    "DELETE": ["/maintenance"]
+    "DELETE": [
+      "/maintenance"
+    ]
   },
   "post_actions": [
+    {
+      "request": "/socket/0/toggle",
+      "action": {
+        "target": "/dashboard",
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][0]: (s.update({'prev_mode': s['mode'], 'mode': 'off' if s['mode'] == 'on' else 'on', 'user_config_mode': 'off' if s['mode'] == 'on' else 'on'}), {})[1])()"
+      }
+    },
+    {
+      "request": "/socket/1/toggle",
+      "action": {
+        "target": "/dashboard",
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][1]: (s.update({'prev_mode': s['mode'], 'mode': 'off' if s['mode'] == 'on' else 'on', 'user_config_mode': 'off' if s['mode'] == 'on' else 'on'}), {})[1])()"
+      }
+    },
+    {
+      "request": "/socket/2/toggle",
+      "action": {
+        "target": "/dashboard",
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][2]: (s.update({'prev_mode': s['mode'], 'mode': 'off' if s['mode'] == 'on' else 'on', 'user_config_mode': 'off' if s['mode'] == 'on' else 'on'}), {})[1])()"
+      }
+    },
+    {
+      "request": "/socket/3/toggle",
+      "action": {
+        "target": "/dashboard",
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][3]: (s.update({'prev_mode': s['mode'], 'mode': 'off' if s['mode'] == 'on' else 'on', 'user_config_mode': 'off' if s['mode'] == 'on' else 'on'}), {})[1])()"
+      }
+    },
+    {
+      "request": "/socket/4/toggle",
+      "action": {
+        "target": "/dashboard",
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][4]: (s.update({'prev_mode': s['mode'], 'mode': 'off' if s['mode'] == 'on' else 'on', 'user_config_mode': 'off' if s['mode'] == 'on' else 'on'}), {})[1])()"
+      }
+    },
+    {
+      "request": "/socket/5/toggle",
+      "action": {
+        "target": "/dashboard",
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][5]: (s.update({'prev_mode': s['mode'], 'mode': 'off' if s['mode'] == 'on' else 'on', 'user_config_mode': 'off' if s['mode'] == 'on' else 'on'}), {})[1])()"
+      }
+    }
   ]
 }

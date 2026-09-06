@@ -444,22 +444,23 @@ class HttpServer(BaseHTTPRequestHandler):
         if data is not None and server.is_allow(self.path, method):
             self.send_response(200)
             self.end_headers()
-            if r_data:
-                post_action = server.get_post_action(self.path)
-                if post_action:
-                    if isinstance(post_action, ABCSequence) and not isinstance(
-                        post_action, (str, bytes, bytearray)
-                    ):
-                        actions: list[PostActionRule] = list(post_action)
-                    else:
-                        actions = [cast(PostActionRule, post_action)]
-                    for p_action in actions:
-                        val = eval(p_action.action)
-                        print(val)
-                        server.update_db(p_action.target, val)
+            post_action = server.get_post_action(self.path)
+            if post_action:
+                # Post-actions fire with or without a request body so that
+                # bodyless endpoints like socket toggle work correctly.
+                if isinstance(post_action, ABCSequence) and not isinstance(
+                    post_action, (str, bytes, bytearray)
+                ):
+                    actions: list[PostActionRule] = list(post_action)
                 else:
-                    server.update_db(self.path, r_data)
-                    self._handle_write_side_effects(server, method, r_data)
+                    actions = [cast(PostActionRule, post_action)]
+                for p_action in actions:
+                    val = eval(p_action.action)
+                    print(val)
+                    server.update_db(p_action.target, val)
+            elif r_data:
+                server.update_db(self.path, r_data)
+                self._handle_write_side_effects(server, method, r_data)
             self.wfile.write(bytes('{"success":true}', "utf8"))
         else:
             self.log("  ==>    %s %s:404" % (method, self.path))
