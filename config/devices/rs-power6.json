@@ -2,7 +2,11 @@
   "type": "RSPOWER6",
   "access": {
     "no_GET": [],
-    "PUT": ["/sockets/config"],
+    "PUT": [
+      "/sockets/config",
+      "/mode",
+      "/unsubscribe"
+    ],
     "POST": [
       "/maintenance"
     ],
@@ -15,42 +19,86 @@
       "request": "/socket/0/toggle",
       "action": {
         "target": "/dashboard",
-        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][0]: (s.update({'prev_mode': s['mode'], 'mode': 'off' if s['mode'] == 'on' else 'on', 'user_config_mode': 'off' if s['mode'] == 'on' else 'on'}), {})[1])()"
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][0]: (lambda nm=('on' if s['mode']=='off' and s.get('prev_mode','off') not in ('schedule','sensor') else s.get('prev_mode','off') if s['mode']=='off' else 'off'): (s.update({'prev_mode': s['mode'], 'mode': nm, 'user_config_mode': nm, 'state': 'unknown' if nm=='off' else 'on'}), {})[1])())()"
       }
     },
     {
       "request": "/socket/1/toggle",
       "action": {
         "target": "/dashboard",
-        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][1]: (s.update({'prev_mode': s['mode'], 'mode': 'off' if s['mode'] == 'on' else 'on', 'user_config_mode': 'off' if s['mode'] == 'on' else 'on'}), {})[1])()"
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][1]: (lambda nm=('on' if s['mode']=='off' and s.get('prev_mode','off') not in ('schedule','sensor') else s.get('prev_mode','off') if s['mode']=='off' else 'off'): (s.update({'prev_mode': s['mode'], 'mode': nm, 'user_config_mode': nm, 'state': 'unknown' if nm=='off' else 'on'}), {})[1])())()"
       }
     },
     {
       "request": "/socket/2/toggle",
       "action": {
         "target": "/dashboard",
-        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][2]: (s.update({'prev_mode': s['mode'], 'mode': 'off' if s['mode'] == 'on' else 'on', 'user_config_mode': 'off' if s['mode'] == 'on' else 'on'}), {})[1])()"
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][2]: (lambda nm=('on' if s['mode']=='off' and s.get('prev_mode','off') not in ('schedule','sensor') else s.get('prev_mode','off') if s['mode']=='off' else 'off'): (s.update({'prev_mode': s['mode'], 'mode': nm, 'user_config_mode': nm, 'state': 'unknown' if nm=='off' else 'on'}), {})[1])())()"
       }
     },
     {
       "request": "/socket/3/toggle",
       "action": {
         "target": "/dashboard",
-        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][3]: (s.update({'prev_mode': s['mode'], 'mode': 'off' if s['mode'] == 'on' else 'on', 'user_config_mode': 'off' if s['mode'] == 'on' else 'on'}), {})[1])()"
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][3]: (lambda nm=('on' if s['mode']=='off' and s.get('prev_mode','off') not in ('schedule','sensor') else s.get('prev_mode','off') if s['mode']=='off' else 'off'): (s.update({'prev_mode': s['mode'], 'mode': nm, 'user_config_mode': nm, 'state': 'unknown' if nm=='off' else 'on'}), {})[1])())()"
       }
     },
     {
       "request": "/socket/4/toggle",
       "action": {
         "target": "/dashboard",
-        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][4]: (s.update({'prev_mode': s['mode'], 'mode': 'off' if s['mode'] == 'on' else 'on', 'user_config_mode': 'off' if s['mode'] == 'on' else 'on'}), {})[1])()"
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][4]: (lambda nm=('on' if s['mode']=='off' and s.get('prev_mode','off') not in ('schedule','sensor') else s.get('prev_mode','off') if s['mode']=='off' else 'off'): (s.update({'prev_mode': s['mode'], 'mode': nm, 'user_config_mode': nm, 'state': 'unknown' if nm=='off' else 'on'}), {})[1])())()"
       }
     },
     {
       "request": "/socket/5/toggle",
       "action": {
         "target": "/dashboard",
-        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][5]: (s.update({'prev_mode': s['mode'], 'mode': 'off' if s['mode'] == 'on' else 'on', 'user_config_mode': 'off' if s['mode'] == 'on' else 'on'}), {})[1])()"
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][5]: (lambda nm=('on' if s['mode']=='off' and s.get('prev_mode','off') not in ('schedule','sensor') else s.get('prev_mode','off') if s['mode']=='off' else 'off'): (s.update({'prev_mode': s['mode'], 'mode': nm, 'user_config_mode': nm, 'state': 'unknown' if nm=='off' else 'on'}), {})[1])())()"
+      }
+    }
+  ],
+  "delete_actions": [
+    {
+      "request": "/socket/0/config",
+      "action": {
+        "target": "/dashboard",
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][0]: (s.update({'mode': 'setup', 'prev_mode': 'setup', 'user_config_mode': 'setup', 'name': 'S1', 'consumption': 0, 'state': 'unknown', 'enabled': True}), {})[1])()"
+      }
+    },
+    {
+      "request": "/socket/1/config",
+      "action": {
+        "target": "/dashboard",
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][1]: (s.update({'mode': 'setup', 'prev_mode': 'setup', 'user_config_mode': 'setup', 'name': 'S2', 'consumption': 0, 'state': 'unknown', 'enabled': True}), {})[1])()"
+      }
+    },
+    {
+      "request": "/socket/2/config",
+      "action": {
+        "target": "/dashboard",
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][2]: (s.update({'mode': 'setup', 'prev_mode': 'setup', 'user_config_mode': 'setup', 'name': 'S3', 'consumption': 0, 'state': 'unknown', 'enabled': True}), {})[1])()"
+      }
+    },
+    {
+      "request": "/socket/3/config",
+      "action": {
+        "target": "/dashboard",
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][3]: (s.update({'mode': 'setup', 'prev_mode': 'setup', 'user_config_mode': 'setup', 'name': 'S4', 'consumption': 0, 'state': 'unknown', 'enabled': True}), {})[1])()"
+      }
+    },
+    {
+      "request": "/socket/4/config",
+      "action": {
+        "target": "/dashboard",
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][4]: (s.update({'mode': 'setup', 'prev_mode': 'setup', 'user_config_mode': 'setup', 'name': 'S5', 'consumption': 0, 'state': 'unknown', 'enabled': True}), {})[1])()"
+      }
+    },
+    {
+      "request": "/socket/5/config",
+      "action": {
+        "target": "/dashboard",
+        "action": "(lambda s=self.server._db['/dashboard']['data']['sockets'][5]: (s.update({'mode': 'setup', 'prev_mode': 'setup', 'user_config_mode': 'setup', 'name': 'S6', 'consumption': 0, 'state': 'unknown', 'enabled': True}), {})[1])()"
       }
     }
   ]

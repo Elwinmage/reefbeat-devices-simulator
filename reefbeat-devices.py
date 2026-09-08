@@ -103,6 +103,7 @@ class ServerConfig(Protocol):
     base_url: str
     access: AccessControl
     post_actions: Sequence[RequestPostAction]
+    delete_actions: Sequence[RequestPostAction]
     actions: str
     modifiers: Optional[Sequence[ModifierFunction]]
 
@@ -196,9 +197,23 @@ class MyServer(HTTPServer):
                 access: dict[str, list[str]] = {"rights": rights}
                 self._db[path]["access"] = access
         for action in self.actions.post_actions:
+            # Build rights: POST is implicit for post_actions, plus any
+            # other methods declared in the config access lists.
+            rights: list[str] = ["POST"]
+            for method in ("PUT", "DELETE"):
+                access_list = getattr(self.actions.access, method, [])
+                if action.request in access_list:
+                    rights.append(method)
             self._db[action.request] = {}
-            self._db[action.request]["access"] = {"rights": ["POST"]}
+            self._db[action.request]["access"] = {"rights": rights}
             self._db[action.request]["action"] = action.action
+        for action in getattr(self.actions, "delete_actions", []):
+            # DELETE is implicit for delete_actions.
+            rights: list[str] = ["DELETE"]
+            if action.request not in self._db:
+                self._db[action.request] = {}
+            self._db[action.request]["access"] = {"rights": rights}
+            self._db[action.request]["delete_action"] = action.action
 
     def replace_ids(self, data):
         new = data.replace("__REEFBEAT_DEVICE_IP__", self.config.ip)
@@ -312,6 +327,18 @@ class MyServer(HTTPServer):
         return cast(
             Optional[Union[PostActionRule, Sequence[PostActionRule]]],
             entry.get("action"),
+        )
+
+    def get_delete_action(
+        self, path: str
+    ) -> Optional[Union[PostActionRule, Sequence[PostActionRule]]]:
+        """Get a delete-action rule for a given API path."""
+        entry = self._db.get(path)
+        if not entry:
+            return None
+        return cast(
+            Optional[Union[PostActionRule, Sequence[PostActionRule]]],
+            entry.get("delete_action"),
         )
 
     def is_allow(self, path: str, method: str) -> bool:
@@ -584,6 +611,18 @@ class HttpServer(BaseHTTPRequestHandler):
             access = server._db[self.path].get("access", {})
             rights = access.get("rights", [])
             if "DELETE" in rights:
+                # Execute delete_actions (config-driven, like post_actions)
+                delete_action = server.get_delete_action(self.path)
+                if delete_action:
+                    if isinstance(delete_action, ABCSequence) and not isinstance(
+                        delete_action, (str, bytes, bytearray)
+                    ):
+                        d_actions: list[PostActionRule] = list(delete_action)
+                    else:
+                        d_actions = [cast(PostActionRule, delete_action)]
+                    for d_action in d_actions:
+                        val = eval(d_action.action)
+                        server.update_db(d_action.target, val)
                 self._handle_delete_side_effects(server)
                 self.send_response(200)
                 self.end_headers()
@@ -635,6 +674,12 @@ class HttpServer(BaseHTTPRequestHandler):
         - PUT /configuration (ReefATO+) -> /dashboard
         """
         if method != "PUT":
+            if (
+                method == "DELETE"
+                and self.path.startswith("/socket/")
+                and self.path.endswith("/config")
+            ):
+                self._handle_power_socket_delete(server)
             return
         if self.path == "/pump/settings":
             self._handle_run_pump_settings_write(server, r_data)
@@ -642,6 +687,8 @@ class HttpServer(BaseHTTPRequestHandler):
             self._handle_ato_configuration_write(server, r_data)
         elif self.path == "/sockets/config":
             self._handle_power_sockets_config_write(server, r_data)
+        elif self.path == "/mode":
+            self._handle_power_mode_write(server, r_data)
 
     def _handle_run_pump_settings_write(self, server: "MyServer", r_data: Any) -> None:
         """Mirror a ReefRun PUT /pump/settings onto /dashboard.
@@ -794,6 +841,70 @@ class HttpServer(BaseHTTPRequestHandler):
                         dash_sock["prev_mode"] = dash_sock.get("mode", "setup")
                     dash_sock[key] = entry[key]
             self.log("PUT /sockets/config: mirrored socket %d to /dashboard" % idx)
+
+    def _handle_power_mode_write(self, server: "MyServer", r_data: Any) -> None:
+        """Mirror a RSPower PUT /mode onto /dashboard.
+
+        The real firmware only updates the device-level mode and
+        previous_mode fields.  Individual socket modes are NOT touched —
+        the device simply cuts or restores power globally without
+        altering per-socket configuration.
+        """
+        if not isinstance(r_data, dict) or "/dashboard" not in server._db:
+            return
+        new_mode = r_data.get("mode")
+        if not isinstance(new_mode, str):
+            return
+
+        dashboard = server._db["/dashboard"].get("data")
+        if not isinstance(dashboard, dict):
+            return
+
+        dashboard["previous_mode"] = dashboard.get("mode", "auto")
+        dashboard["mode"] = new_mode
+        self.log("PUT /mode: %s -> %s" % (dashboard["previous_mode"], new_mode))
+
+    def _handle_power_socket_delete(self, server: "MyServer") -> None:
+        """Handle DELETE /socket/N/config — reset the socket to setup.
+
+        Also updates /sockets/config to keep both data sources in sync.
+        """
+        import re
+
+        m = re.match(r"/socket/(\d+)/config", self.path)
+        if not m:
+            return
+        idx = int(m.group(1))
+
+        dashboard = server._db.get("/dashboard", {}).get("data")
+        if isinstance(dashboard, dict):
+            socks = dashboard.get("sockets")
+            if isinstance(socks, list) and idx < len(socks):
+                socks[idx].update(
+                    {
+                        "mode": "setup",
+                        "prev_mode": "setup",
+                        "user_config_mode": "setup",
+                        "name": "S%d" % (idx + 1),
+                        "consumption": 0,
+                        "state": "unknown",
+                        "enabled": True,
+                    }
+                )
+
+        sockets_conf = server._db.get("/sockets/config", {}).get("data")
+        if isinstance(sockets_conf, dict):
+            conf_socks = sockets_conf.get("sockets")
+            if isinstance(conf_socks, list) and idx < len(conf_socks):
+                conf_socks[idx].update(
+                    {
+                        "mode": "setup",
+                        "user_config_mode": "setup",
+                        "name": "S%d" % (idx + 1),
+                    }
+                )
+
+        self.log("DELETE /socket/%d/config: reset to setup" % idx)
 
     # -------------------------------------------------------------------------
     # ReefATO+ manual fill
