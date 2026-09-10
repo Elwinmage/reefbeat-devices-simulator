@@ -6,7 +6,7 @@
   },
   "cable_connected": true,
   "connected_device": {
-    "hwid": "885721783bd8",
+    "hwid": "__REEFBEAT_PAIRED_HW_ID__",
     "internet_connected": true,
     "state": "paired_connected"
   },

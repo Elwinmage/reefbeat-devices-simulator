@@ -215,16 +215,38 @@ class MyServer(HTTPServer):
             self._db[action.request]["access"] = {"rights": rights}
             self._db[action.request]["delete_action"] = action.action
 
+    @staticmethod
+    def hw_id_for(name: str) -> str:
+        """Return the hardware id a simulated device called `name` would get.
+
+        Ids are derived from the device name so they stay stable across runs
+        without being stored anywhere.
+        """
+        return str(int(hashlib.sha1(name.encode("utf-8")).hexdigest(), 16) % (10**12))
+
+    def paired_hw_id(self) -> str:
+        """Return the hardware id of the device this one is paired with.
+
+        The peer is named once, in this device's `paired_with` config entry,
+        rather than inside the fixtures: a pairing is a property of the setup,
+        not of the payload, and keeping it in one place means renaming a
+        device does not leave a stale id buried in a JSON fixture. Devices
+        identify each other by hardware id on the wire, which is what both
+        sides of the link must agree on.
+        """
+        peer = getattr(self.config, "paired_with", None)
+        if not peer:
+            return ""
+        return self.hw_id_for(peer)
+
     def replace_ids(self, data):
         new = data.replace("__REEFBEAT_DEVICE_IP__", self.config.ip)
         new = new.replace("__REEFBEAT_NAME__", self.config.name)
         new = new.replace(
             "__REEFBEAT_HW_ID__",
-            str(
-                int(hashlib.sha1(self.config.name.encode("utf-8")).hexdigest(), 16)
-                % (10**12)
-            ),
+            self.hw_id_for(self.config.name),
         )
+        new = new.replace("__REEFBEAT_PAIRED_HW_ID__", self.paired_hw_id())
         new = new.replace(
             "__REEFBEAT_UUID__", str(uuid.uuid3(uuid.NAMESPACE_X500, self.config.name))
         )

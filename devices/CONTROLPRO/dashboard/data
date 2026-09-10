@@ -1,92 +1,92 @@
 {
-  "mode": "auto",
-  "is_internet_connected": true,
-  "cable_connected": true,
-  "connected_device": {
-    "state": "paired_connected",
-    "hwid": "885721783bd8",
-    "internet_connected": true
-  },
-  "probes": [
-    {
-      "type": "orp",
-      "uid": "0x0071C",
-      "name": "Ozone",
-      "status": "auto",
-      "value": 186,
-      "level": "danger",
-      "last_installation_date": 1784391243
-    },
-    {
-      "type": "ec",
-      "uid": "0x00432",
-      "measurement_unit": "ppt",
-      "value": 36.3,
-      "name": "Salinity",
-      "status": "auto",
-      "ec": 54.8,
-      "ppt": 36.3,
-      "sg": 1.0274,
-      "level": "acceptable",
-      "temp_value": 26,
-      "temp_level": "acceptable",
-      "last_installation_date": 1784392274,
-      "last_adjustment_date": null
-    },
-    {
-      "type": "ph",
-      "uid": "0x00132",
-      "name": "pH",
-      "status": "auto",
-      "value": 8.11,
-      "level": "desired",
-      "temp_value": 26.2,
-      "temp_level": "acceptable",
-      "last_installation_date": 1784392364,
-      "last_adjustment_date": 1784394757
-    },
-    {
-      "type": "ato",
-      "uid": "0x004C6",
-      "name": "Level & Temp",
-      "status": "auto",
-      "water_level": "desired_level_1",
-      "temp_value": 26.1,
-      "temp_level": "acceptable",
-      "last_installation_date": 1784983713,
-      "last_adjustment_date": 1784983900
-    }
-  ],
-  "ports": [
-    {
-      "number": 0,
-      "name": "ATO",
-      "type": "ato",
-      "mode": "auto",
-      "user_config_mode": "auto",
-      "auto_fill": true,
-      "temp_log_enabled": true,
-      "uid": "0x004C6",
-      "today_volume": 0,
-      "is_pump_on": false,
-      "last_pump_on_cause": "unknown",
-      "volume_left": 13000,
-      "consumption": 0
-    },
-    {
-      "number": 1,
-      "name": "Ozone1",
-      "mode": "off",
-      "type": "other",
-      "state": "unknown",
-      "user_config_mode": "off",
-      "consumption": 0
-    }
-  ],
   "buzzer": {
     "active": false,
     "cause": "none",
     "dismissed": false
   },
-  "leak_detector": true
+  "cable_connected": true,
+  "connected_device": {
+    "hwid": "__REEFBEAT_PAIRED_HW_ID__",
+    "internet_connected": true,
+    "state": "paired_connected"
+  },
+  "is_internet_connected": true,
+  "leak_detector": true,
+  "mode": "auto",
+  "ports": [
+    {
+      "auto_fill": true,
+      "consumption": 0,
+      "is_pump_on": false,
+      "last_pump_on_cause": "unknown",
+      "mode": "auto",
+      "name": "ATO",
+      "number": 0,
+      "temp_log_enabled": true,
+      "today_volume": 0,
+      "type": "ato",
+      "uid": "0x004C6",
+      "user_config_mode": "auto",
+      "volume_left": 13000
+    },
+    {
+      "consumption": 0,
+      "mode": "off",
+      "name": "Ozone1",
+      "number": 1,
+      "state": "unknown",
+      "type": "other",
+      "user_config_mode": "off"
+    }
+  ],
+  "probes": [
+    {
+      "last_installation_date": 1784391243,
+      "level": "danger",
+      "name": "Ozone",
+      "status": "auto",
+      "type": "orp",
+      "uid": "0x0071C",
+      "value": 186
+    },
+    {
+      "ec": 54.8,
+      "last_adjustment_date": null,
+      "last_installation_date": 1784392274,
+      "level": "acceptable",
+      "measurement_unit": "ppt",
+      "name": "Salinity",
+      "ppt": 36.3,
+      "sg": 1.0274,
+      "status": "auto",
+      "temp_level": "acceptable",
+      "temp_value": 26,
+      "type": "ec",
+      "uid": "0x00432",
+      "value": 36.3
+    },
+    {
+      "last_adjustment_date": 1784394757,
+      "last_installation_date": 1784392364,
+      "level": "desired",
+      "name": "pH",
+      "status": "auto",
+      "temp_level": "acceptable",
+      "temp_value": 26.2,
+      "type": "ph",
+      "uid": "0x00132",
+      "value": 8.11
+    },
+    {
+      "last_adjustment_date": 1784983900,
+      "last_installation_date": 1784983713,
+      "name": "Level & Temp",
+      "status": "auto",
+      "temp_level": "acceptable",
+      "temp_value": 26.1,
+      "type": "ato",
+      "uid": "0x004C6",
+      "water_level": "desired_level_1"
+    }
+  ]
 }

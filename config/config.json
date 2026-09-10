@@ -6,7 +6,7 @@
       "base_url": "devices/DOSE4",
       "ip": "192.168.0.240",
       "port": 80,
-      "actions":"config/devices/rs-dose4.json"
+      "actions": "config/devices/rs-dose4.json"
     },
     {
       "enabled": true,
@@ -14,7 +14,7 @@
       "base_url": "devices/ATO",
       "ip": "192.168.0.241",
       "port": 80,
-      "actions":"config/devices/rs-ato.json"
+      "actions": "config/devices/rs-ato.json"
     },
     {
       "enabled": true,
@@ -22,7 +22,7 @@
       "base_url": "devices/LED_G1_160",
       "ip": "192.168.0.242",
       "port": 80,
-      "actions":"config/devices/rs-led-g1.json"
+      "actions": "config/devices/rs-led-g1.json"
     },
     {
       "enabled": true,
@@ -30,7 +30,7 @@
       "base_url": "devices/LED_G2_115",
       "ip": "192.168.0.243",
       "port": 80,
-      "actions":"config/devices/rs-led-g2.json"
+      "actions": "config/devices/rs-led-g2.json"
     },
     {
       "enabled": true,
@@ -38,7 +38,7 @@
       "base_url": "devices/LED_G1_90",
       "ip": "192.168.0.244",
       "port": 80,
-      "actions":"config/devices/rs-led-g1.json"
+      "actions": "config/devices/rs-led-g1.json"
     },
     {
       "enabled": true,
@@ -46,7 +46,7 @@
       "base_url": "devices/DOSE2",
       "ip": "192.168.0.250",
       "port": 80,
-      "actions":"config/devices/rs-dose2.json"
+      "actions": "config/devices/rs-dose2.json"
     },
     {
       "enabled": true,
@@ -54,7 +54,8 @@
       "base_url": "devices/POWER6",
       "ip": "192.168.0.245",
       "port": 80,
-      "actions":"config/devices/rs-power6.json"
+      "actions": "config/devices/rs-power6.json",
+      "paired_with": "RSCONTROLPRO"
     },
     {
       "enabled": true,
@@ -62,7 +63,8 @@
       "base_url": "devices/POWER8",
       "ip": "192.168.0.246",
       "port": 80,
-      "actions":"config/devices/rs-power8.json"
+      "actions": "config/devices/rs-power8.json",
+      "paired_with": "RSCONTROLLITE"
     },
     {
       "enabled": true,
@@ -70,7 +72,8 @@
       "base_url": "devices/CONTROLPRO",
       "ip": "192.168.0.247",
       "port": 80,
-      "actions":"config/devices/rs-control-pro.json"
+      "actions": "config/devices/rs-control-pro.json",
+      "paired_with": "RSPOWER6"
     },
     {
       "enabled": true,
@@ -78,7 +81,8 @@
       "base_url": "devices/CONTROLLITE",
       "ip": "192.168.0.248",
       "port": 80,
-      "actions":"config/devices/rs-control-lite.json"
+      "actions": "config/devices/rs-control-lite.json",
+      "paired_with": "RSPOWER8"
     }
   ]
 }
