@@ -4,9 +4,11 @@ from .common import (
     set_value,
 )
 from .rs_dose import decrease_volume
+from .rs_power import apply_socket_schedules
 from .rs_run import simulate_pump_temperature, sync_pump_intensity
 
 __all__ = [
+    "apply_socket_schedules",
     "decrease_value",
     "decrease_volume",
     "increase_value",
