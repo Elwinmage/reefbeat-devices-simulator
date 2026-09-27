@@ -742,21 +742,17 @@ class HttpServer(BaseHTTPRequestHandler):
 
         - PUT /pump/settings (ReefRun) -> /dashboard
         - PUT /configuration (ReefATO+) -> /dashboard
+        - PUT /mode (RSPower) -> /dashboard
+
+        RSPower socket writes (``PUT /sockets/config``, ``DELETE
+        /socket/<n>/config``) are handled in ``function_extension.rs_power``.
         """
         if method != "PUT":
-            if (
-                method == "DELETE"
-                and self.path.startswith("/socket/")
-                and self.path.endswith("/config")
-            ):
-                self._handle_power_socket_delete(server)
             return
         if self.path == "/pump/settings":
             self._handle_run_pump_settings_write(server, r_data)
         elif self.path == "/configuration":
             self._handle_ato_configuration_write(server, r_data)
-        elif self.path == "/sockets/config":
-            self._handle_power_sockets_config_write(server, r_data)
         elif self.path == "/mode":
             self._handle_power_mode_write(server, r_data)
 
@@ -867,51 +863,6 @@ class HttpServer(BaseHTTPRequestHandler):
         server.update_db("/dashboard", {"leak_sensor": update})
         self.log("PUT /configuration: mirrored to /dashboard: %s" % update)
 
-    def _handle_power_sockets_config_write(
-        self, server: "MyServer", r_data: Any
-    ) -> None:
-        """Mirror a RSPower PUT /sockets/config onto /dashboard.
-
-        When a socket is configured (name, mode, enabled changed via the app
-        or the HA integration), the real firmware also updates the matching
-        entry in /dashboard/sockets so the polled state reflects the change
-        immediately.
-
-        The request body follows the same schema as /sockets/config/data:
-        ``{"sockets": [{"number": N, "name": "...", "mode": "...", ...}, ...]}``.
-        Only the sockets present in the payload are touched; others are left
-        unchanged.
-        """
-        if not isinstance(r_data, dict) or "/dashboard" not in server._db:
-            return
-        dashboard = server._db["/dashboard"].get("data")
-        if not isinstance(dashboard, dict):
-            return
-        dash_sockets = dashboard.get("sockets")
-        if not isinstance(dash_sockets, list):
-            return
-
-        incoming = r_data.get("sockets", [])
-        if not isinstance(incoming, list):
-            incoming = [r_data] if "number" in r_data else []
-
-        # Fields shared between /sockets/config and /dashboard/sockets
-        MIRRORED = {"name", "mode", "user_config_mode", "enabled"}
-
-        for entry in incoming:
-            if not isinstance(entry, dict) or "number" not in entry:
-                continue
-            idx = entry["number"]
-            if not isinstance(idx, int) or idx < 0 or idx >= len(dash_sockets):
-                continue
-            dash_sock = dash_sockets[idx]
-            for key in MIRRORED:
-                if key in entry:
-                    if key == "mode" and entry[key] != dash_sock.get("mode"):
-                        dash_sock["prev_mode"] = dash_sock.get("mode", "setup")
-                    dash_sock[key] = entry[key]
-            self.log("PUT /sockets/config: mirrored socket %d to /dashboard" % idx)
-
     def _handle_power_mode_write(self, server: "MyServer", r_data: Any) -> None:
         """Mirror a RSPower PUT /mode onto /dashboard.
 
@@ -933,48 +884,6 @@ class HttpServer(BaseHTTPRequestHandler):
         dashboard["previous_mode"] = dashboard.get("mode", "auto")
         dashboard["mode"] = new_mode
         self.log("PUT /mode: %s -> %s" % (dashboard["previous_mode"], new_mode))
-
-    def _handle_power_socket_delete(self, server: "MyServer") -> None:
-        """Handle DELETE /socket/N/config — reset the socket to setup.
-
-        Also updates /sockets/config to keep both data sources in sync.
-        """
-        import re
-
-        m = re.match(r"/socket/(\d+)/config", self.path)
-        if not m:
-            return
-        idx = int(m.group(1))
-
-        dashboard = server._db.get("/dashboard", {}).get("data")
-        if isinstance(dashboard, dict):
-            socks = dashboard.get("sockets")
-            if isinstance(socks, list) and idx < len(socks):
-                socks[idx].update(
-                    {
-                        "mode": "setup",
-                        "prev_mode": "setup",
-                        "user_config_mode": "setup",
-                        "name": "S%d" % (idx + 1),
-                        "consumption": 0,
-                        "state": "unknown",
-                        "enabled": True,
-                    }
-                )
-
-        sockets_conf = server._db.get("/sockets/config", {}).get("data")
-        if isinstance(sockets_conf, dict):
-            conf_socks = sockets_conf.get("sockets")
-            if isinstance(conf_socks, list) and idx < len(conf_socks):
-                conf_socks[idx].update(
-                    {
-                        "mode": "setup",
-                        "user_config_mode": "setup",
-                        "name": "S%d" % (idx + 1),
-                    }
-                )
-
-        self.log("DELETE /socket/%d/config: reset to setup" % idx)
 
     # -------------------------------------------------------------------------
     # ReefATO+ manual fill

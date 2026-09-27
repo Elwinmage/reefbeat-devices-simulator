@@ -189,5 +189,68 @@ def test_setup_finish_on_the_strip(power: Any) -> None:
 
 
 def test_other_paths_are_left_to_the_generic_handler(power: Any) -> None:
-    assert call(power, "PUT", "/sockets/config", {}) is None
     assert call(power, "GET", "/dashboard") is None
+    assert call(power, "DELETE", "/socket/2/config/schedule") is None
+
+
+# ── Socket configuration and deletion ────────────────────────────────────────
+
+
+def test_partial_socket_config_keeps_the_others(power: Any) -> None:
+    body = {"sockets": [{"number": 2, "mode": "on", "name": "Heater"}]}
+    assert call(power, "PUT", "/sockets/config", body)[0] == 200
+    sockets = power.get_data("/sockets/config")["sockets"]
+    assert len(sockets) == 6
+    assert (sockets[2]["name"], sockets[2]["mode"]) == ("Heater", "on")
+    assert sockets[2]["user_config_mode"] == "on"
+    assert sockets[0]["name"] == "Led refuge"
+    socket = _socket(power, 2)
+    assert (socket["name"], socket["mode"], socket["prev_mode"]) == (
+        "Heater",
+        "on",
+        "setup",
+    )
+    call(power, "PUT", "/sockets/config", {"number": 2, "mode": "off"})
+    assert _socket(power, 2)["state"] == "unknown"
+    assert (
+        call(power, "PUT", "/sockets/config", {"sockets": ["junk", {"number": 99}]})[0]
+        == 200
+    )
+
+
+def test_socket_delete(power: Any) -> None:
+    call(power, "DELETE", "/paired-device")
+    call(power, "POST", "/sensor/install", {})
+    call(
+        power,
+        "PUT",
+        "/sockets/config",
+        {"sockets": [{"number": 3, "mode": "sensor", "name": "Heater"}]},
+    )
+    call(
+        power,
+        "PUT",
+        "/subscribe",
+        {"sockets": [{"number": 3, "app_cache": "temperature"}]},
+    )
+    call(
+        power,
+        "PUT",
+        "/temperature/subscribe",
+        {"sockets": [{"number": 3, "value": 24}]},
+    )
+    assert call(power, "DELETE", "/socket/3/config") == (
+        200,
+        {"success": True, "message": "Successfully deleted sockets"},
+    )
+    socket = _socket(power, 3)
+    assert (socket["mode"], socket["name"], socket["state"]) == (
+        "setup",
+        "S4",
+        "unknown",
+    )
+    config = power.get_data("/sockets/config")["sockets"][3]
+    assert (config["mode"], config["name"], config["sensor"]) == ("setup", "S4", None)
+    assert call(power, "GET", "/temperature/subscriptions")[1]["sockets"] == []
+    assert call(power, "DELETE", "/socket/9/config")[0] == 404
+    assert call(power, "PUT", "/unsubscribe", {"sockets": [3]})[0] == 200

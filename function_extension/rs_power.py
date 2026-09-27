@@ -347,6 +347,93 @@ def _unsubscribe(server: Any, body: Any):
     return _ok("Sockets were unsubscribed successfully")
 
 
+def _socket_index(path: str) -> Optional[int]:
+    try:
+        return int(path.split("/")[2])
+    except (IndexError, ValueError):
+        return None
+
+
+def _sockets_config_put(server: Any, body: Any):
+    """``PUT /sockets/config`` — partial: only the sockets sent change.
+
+    Merged socket by socket (``number``) into ``/sockets/config`` and
+    mirrored onto ``/dashboard``, as the strip does: a client polling the
+    dashboard sees the new name / mode at once.
+    """
+    incoming = body.get("sockets") if isinstance(body, dict) else None
+    if not isinstance(incoming, list):
+        incoming = [body] if isinstance(body, dict) and "number" in body else []
+    config = {
+        s.get("number"): s for s in _sockets_config(server) if isinstance(s, dict)
+    }
+    dash_sockets = (_pw_dashboard(server) or {}).get("sockets")
+    dash_sockets = dash_sockets if isinstance(dash_sockets, list) else []
+    for entry in incoming:
+        number = entry.get("number") if isinstance(entry, dict) else None
+        if not isinstance(entry, dict) or not isinstance(number, int):
+            continue
+        fields = {k: v for k, v in entry.items() if k != "number"}
+        if number in config:
+            config[number].update(fields)
+            if "mode" in fields:
+                config[number]["user_config_mode"] = fields["mode"]
+        if 0 <= number < len(dash_sockets) and isinstance(dash_sockets[number], dict):
+            socket = dash_sockets[number]
+            if "mode" in fields and fields["mode"] != socket.get("mode"):
+                socket["prev_mode"] = socket.get("mode", "setup")
+            for key in ("name", "mode", "enabled"):
+                if key in fields:
+                    socket[key] = fields[key]
+            if "mode" in fields:
+                socket["user_config_mode"] = fields["mode"]
+                if fields["mode"] in ("on", "off", "setup"):
+                    socket["state"] = "unknown" if fields["mode"] != "on" else "on"
+    return 200, {
+        "success": True,
+        "message": "Sockets configuration was set successfully",
+    }
+
+
+def _socket_delete(server: Any, number: int):
+    """``DELETE /socket/<n>/config`` — the socket goes back to setup.
+
+    Reset on ``/dashboard`` and ``/sockets/config``, and it no longer follows
+    the local probe. The rule a paired hub keeps for it is the hub's
+    (``PUT /socket/<n>/unsubscribe`` there).
+    """
+    dash_sockets = (_pw_dashboard(server) or {}).get("sockets")
+    if not isinstance(dash_sockets, list) or not 0 <= number < len(dash_sockets):
+        return 404, {"success": False, "message": "Socket not found"}
+    name = "S%d" % (number + 1)
+    socket = dash_sockets[number]
+    if isinstance(socket, dict):
+        socket.update(
+            {
+                "mode": "setup",
+                "prev_mode": "setup",
+                "user_config_mode": "setup",
+                "name": name,
+                "consumption": 0,
+                "state": "unknown",
+                "enabled": True,
+            }
+        )
+    for entry in _sockets_config(server):
+        if isinstance(entry, dict) and entry.get("number") == number:
+            entry.update(
+                {
+                    "mode": "setup",
+                    "user_config_mode": "setup",
+                    "name": name,
+                    "sensor": None,
+                }
+            )
+    subs = _pw_subs(server)
+    subs["sockets"] = [s for s in subs["sockets"] if s.get("number") != number]
+    return 200, {"success": True, "message": "Successfully deleted sockets"}
+
+
 def _unpair(server: Any):
     rs_control.unlink(paired_hub(server), server)
     return _ok("Paired device was deleted successfully")
@@ -449,12 +536,18 @@ def handle_local_temp(server: Any, method: str, raw_path: str, body: Any):
                 return _subscribe(server, body)
             if path == "/unsubscribe":
                 return _unsubscribe(server, body)
+            if path == "/sockets/config":
+                return _sockets_config_put(server, body)
             return None
         if method == "DELETE":
             if path == "/sensor":
                 return _remove(server)
             if path == "/paired-device":
                 return _unpair(server)
+            if path.startswith("/socket/") and path.endswith("/config"):
+                number = _socket_index(path)
+                if number is not None and path.count("/") == 3:
+                    return _socket_delete(server, number)
             if path == "/probe/offset":
                 if not st["installed"]:
                     return _no_probe()

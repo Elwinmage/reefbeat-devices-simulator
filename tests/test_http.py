@@ -79,3 +79,20 @@ def test_generic_endpoints_still_work(pair: tuple) -> None:
     socket = request(power, "GET", "/dashboard")[1]["sockets"][2]
     assert (socket["mode"], socket["name"]) == ("on", "Heater")
     assert request(power, "GET", "/temperature/config")[0] == 404
+
+
+def test_socket_deletion_over_http(pair: tuple) -> None:
+    """What the integration sends to delete a socket."""
+    hub, power = pair
+    request(
+        power,
+        "PUT",
+        "/sockets/config",
+        {"sockets": [{"number": 2, "mode": "on", "name": "Heater"}]},
+    )
+    status, answer = request(power, "DELETE", "/socket/2/config")
+    assert status == 200 and answer["message"] == "Successfully deleted sockets"
+    assert request(power, "PUT", "/unsubscribe", {"sockets": [2]})[0] == 200
+    config = request(power, "GET", "/sockets/config")[1]["sockets"]
+    assert len(config) == 6 and config[2]["name"] == "S3"
+    assert request(power, "GET", "/dashboard")[1]["sockets"][2]["mode"] == "setup"

@@ -197,7 +197,14 @@ hub.
 ### ReefPower Strips (RSPOWER 6 / 8)
 
 Handled in `function_extension/rs_power.py`, besides the fixture machinery
-(socket config, toggles, schedules):
+(toggles, schedules):
+
+- `PUT /sockets/config` is partial, as on the strip: only the sockets sent
+  change, merged by `number` into `/sockets/config` and mirrored onto
+  `/dashboard` (a plain merge used to replace the whole `sockets` list);
+- `DELETE /socket/<n>/config` puts the socket back to setup (`S<n+1>`) on
+  both, and it stops following the local probe; the rule a paired hub keeps
+  for it is removed on the hub (`PUT /socket/<n>/unsubscribe`);
 
 - sockets in `schedule` mode follow the clock; sockets in `sensor` mode
   follow the rule the paired hub keeps for them (`/subscription-info`), else
