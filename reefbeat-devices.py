@@ -171,6 +171,14 @@ class MyServer(HTTPServer):
             print("Creating IP: %s " % config.ip)
             time.sleep(3)
         super().__init__((self.config.ip, self.config.port), handler)
+        self.load_fixtures()
+
+    def load_fixtures(self) -> None:
+        """Fill the in-memory DB from the fixture tree and the actions config.
+
+        Separate from ``__init__`` so the state can be built without binding
+        a socket (tests).
+        """
         # fetch all_data and put them in cache
         for file_p in list(pathlib.Path(self.config.base_url).rglob("data")):
             file_s = str(file_p)
@@ -214,6 +222,9 @@ class MyServer(HTTPServer):
                 self._db[action.request] = {}
             self._db[action.request]["access"] = {"rights": rights}
             self._db[action.request]["delete_action"] = action.action
+        # Reachable by the other devices of this process (an RSCONTROL hub
+        # pairs with an RSPower strip and drives its sockets).
+        function_extension.registry.register(self)
 
     @staticmethod
     def hw_id_for(name: str) -> str:
@@ -444,6 +455,11 @@ class HttpServer(BaseHTTPRequestHandler):
         """
 
         self.log_reqst("GET")
+        # RSCONTROL probe hub and RSPower local-temperature endpoints use query
+        # strings and stateful mutations that do not fit the generic file /
+        # post-action model, so they are dispatched here first.
+        if self._try_extension("GET", None):
+            return
         # A fill in progress advances on demand: the simulator has no clock of
         # its own, so the state it would have reached is computed when a client
         # asks for it. Polling more often does not dispense more water.
@@ -488,6 +504,10 @@ class HttpServer(BaseHTTPRequestHandler):
                 self.log("%s %s: ignoring non-JSON body" % (method, self.path))
                 r_data = ""
         self.log_reqst(method, r_data)
+        # RSCONTROL probe hub / RSPower local-temperature writes are handled by
+        # the extension modules before the generic merge machinery.
+        if self._try_extension(method, r_data):
+            return
         data = self.get_data(self.path)
         server = cast(MyServer, self.server)
         if data is not None and server.is_allow(self.path, method):
@@ -626,6 +646,10 @@ class HttpServer(BaseHTTPRequestHandler):
             self.wfile.write(bytes('{"success":true}', "utf8"))
             return
 
+        # RSCONTROL probe / RSPower local-temperature DELETEs.
+        if self._try_extension("DELETE", None):
+            return
+
         # Generic DELETE: only allow if DELETE is explicitly listed in the
         # actions config for the current path. Falling back to GET rights was
         # too permissive and allowed DELETEs on any read-only endpoint.
@@ -681,6 +705,30 @@ class HttpServer(BaseHTTPRequestHandler):
         self.log("DELETE %s: 404" % self.path)
         self.send_response(404)
         self.end_headers()
+
+    def _try_extension(self, method: str, body: Any) -> bool:
+        """Dispatch RSCONTROL-probe / RSPower-local-temp endpoints.
+
+        Returns True when an extension module owned the request and a response
+        was already written; False to let the generic machinery handle it.
+        """
+        server = cast(MyServer, self.server)
+        result = function_extension.rs_control.handle(server, method, self.path, body)
+        if result is None:
+            result = function_extension.handle_local_temp(
+                server, method, self.path, body
+            )
+        if result is None:
+            return False
+        status, payload = result
+        self.send_response(int(status))
+        self.end_headers()
+        if isinstance(payload, str):
+            self.wfile.write(bytes(payload, "utf8"))
+        else:
+            self.wfile.write(bytes(json.dumps(payload), "utf8"))
+        self.log("  ==>    %s %s:%s (extension)" % (method, self.path, status))
+        return True
 
     def _handle_write_side_effects(
         self, server: "MyServer", method: str, r_data: Any

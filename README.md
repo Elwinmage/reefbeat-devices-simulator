@@ -173,6 +173,72 @@ and polling faster does not dispense more water.
 `days_till_empty` is deliberately left untouched: the firmware derives it from
 a running average this simulator does not keep.
 
+### ReefControl Hub (RSCONTROL Pro / Lite)
+
+Handled in `function_extension/rs_control.py`. The probe state lives in
+`/dashboard`'s `probes` list as canonical records (raw readings plus private
+`_`-prefixed book-keeping); every endpoint projects what the firmware exposes.
+
+| Area | Endpoints | Behaviour |
+| ---- | --------- | --------- |
+| Probes | `POST /probe/install?type=`, `POST /ble/off`, `PUT /probe/config` (array), `GET /probe/config`, `GET /probe?type&uid`, `GET /probe/info`, `POST\|DELETE /probe/disable`, `DELETE /probe`, `DELETE /setup-probes` | A new probe stays in `setup` until configured. A leak probe only takes its name in `/probe/config` (flags: 503). `GET /probe` answers in the per-type shape of a real hub. |
+| Offsets | `GET\|POST\|DELETE /probe/offset?type&uid` | For the reading of temperature and ORP probes and the embedded temperature of pH, EC and ATO probes. `POST` **adds** to the current offset (captured), whole millivolts for ORP; every reading includes it. |
+| Multi-point calibration | `POST /probe/calibration-enter`, `POST /probe/calibration-point-start`, `GET /probe/calibration-status`, `POST /probe/calibration-exit`, `GET /probe/calibration-log`, `POST /probe/calibration-restore`, `POST /probe/calibration-factory-reset` | pH (LOW / MID / HIGH) and EC (MID). A point is `in_progress` for `calibration_seconds` (device config, 180 s by default, as the ReefBeat app expects), with `time_left` and `stability_progress`, then `success`, or `fail_check_solution` (pH solution out of 3.5-4.5 / 6.5-7.5 / 9-10.5) / `fail_value_error` (EC out of 20-99). Exiting after a successful point dates the calibration (`last_adjustment_date`). |
+| Leaks | `GET /probe?type=leak`, `GET\|PUT /leak/config`, `PUT /configuration` | `leak_status` (`dry`, `aquarium_water_leak`, `rodi_water_leak`) and the conductivity it measured. `leak_detector` is kept in step on `/configuration`, `/leak/config` and `/dashboard`. |
+| Buzzer | `/dashboard.buzzer` | Sounds for a wet leak probe (detector and leak buzzer on) or a probe in danger with its buzzer on (danger buzzer on). `cause` is `leak`, `danger` or `none` (names not captured). A dismissed buzzer stays silent until the cause clears. |
+| 12V ports | `PUT /ports/config` (array), `POST /port/<n>/install`, `DELETE /port/<n>`, `GET\|PUT /port/<n>/schedule`, `POST /port/<n>/toggle`, `PUT /ports/subscribe` | An uninstalled port answers 503. The state follows the schedule (`schedule` mode) or the probe rule (`sensor` mode), with hysteresis; a toggle from `off` returns to the previous automatic mode. |
+| RSPower link | `POST /power/discover {"pair"}`, `POST /power/unpair`, `PUT /socket/<n>/subscribe`, `PUT /socket/<n>/unsubscribe`, `GET /subscription-info` | Pairs with the strip named in `paired_with` when it is free (no hub, no local probe), else the first free strip; both dashboards report each other. Unpairing drops the socket rules. |
+| Misc | `POST /setup-finish`, `/sensor-log`, `/temperature-log` | `setup-finish` moves `/mode` and `/dashboard` to `auto`. |
+
+Unplugged probe: `status` `disconnected` on `/dashboard`, and 503 on every
+request about it (`GET /probe`, `/probe/offset`, calibration), as on a real
+hub.
+
+### ReefPower Strips (RSPOWER 6 / 8)
+
+Handled in `function_extension/rs_power.py`, besides the fixture machinery
+(socket config, toggles, schedules):
+
+- sockets in `schedule` mode follow the clock; sockets in `sensor` mode
+  follow the rule the paired hub keeps for them (`/subscription-info`), else
+  the rule of the local probe (`/temperature/subscriptions`), else their
+  `default_state`;
+- local temperature probe: `POST /sensor/install` (refused while paired
+  with a hub: a strip takes one or the other), `DELETE /sensor`,
+  `/temperature/config`, `/temperature/subscribe`, `/temperature`,
+  `/temperature/log`, `/temperature-probe-info`, all 404 without a probe;
+  `POST /probe/offset` **adds** to the offset;
+- `DELETE /paired-device` unpairs both sides; `PUT /subscribe` records the
+  probe type a socket follows, `PUT /unsubscribe {"sockets": [n]}` forgets
+  it; `POST /setup-finish`.
+
+Devices reach each other through `function_extension/registry.py`: all the
+simulated devices run in one process.
+
+### Simulator Controls
+
+Endpoints that exist only in the simulator, to play a scenario:
+
+| Request | Effect |
+| ------- | ------ |
+| `PUT /sim/probe?type=<t>&uid=<u>` | Set what a hub probe measures: `value`, `temp`, `water_level`, `leak_status`, `ppt`, `sg`; or unplug / plug it: `status` `disconnected` / `connected`. Raw values: offsets still apply. |
+| `PUT /sim/buzzer` | `{"dismissed": true}`, as when the hub button is pressed. |
+
+```bash
+curl -X PUT "http://192.168.0.247/sim/probe?type=leak&uid=0x0032B" \
+     -d '{"leak_status": "aquarium_water_leak"}'
+```
+
+### Tests
+
+```bash
+pip install pytest
+python -m pytest tests
+```
+
+The tests build the devices from the fixtures without binding the
+configured IPs; `tests/test_http.py` serves two of them on localhost.
+
 ## Fixture Exporter (Create Fixtures)
 
 `run.py` is a Python-based fixture exporter for the ReefBeat Devices Simulator.

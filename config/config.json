@@ -89,7 +89,15 @@
       "ip": "192.168.0.247",
       "port": 80,
       "actions": "config/devices/rs-control-pro.json",
-      "paired_with": "RSPOWER6"
+      "paired_with": "RSPOWER6",
+      "modifiers": [
+        {
+          "name": "project_control_dashboard",
+          "params": {
+            "path": "/dashboard"
+          }
+        }
+      ]
     },
     {
       "enabled": true,
@@ -98,7 +106,15 @@
       "ip": "192.168.0.248",
       "port": 80,
       "actions": "config/devices/rs-control-lite.json",
-      "paired_with": "RSPOWER8"
+      "paired_with": "RSPOWER8",
+      "modifiers": [
+        {
+          "name": "project_control_dashboard",
+          "params": {
+            "path": "/dashboard"
+          }
+        }
+      ]
     }
   ]
 }

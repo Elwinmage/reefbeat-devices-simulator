@@ -1,28 +1,116 @@
 {
+  "mode": "auto",
+  "is_internet_connected": true,
+  "cable_connected": true,
+  "connected_device": {
+    "state": "paired_connected",
+    "hwid": "__REEFBEAT_PAIRED_HW_ID__",
+    "internet_connected": true
+  },
+  "probes": [
+    {
+      "type": "leak",
+      "uid": "0x00A01",
+      "name": "Fuite A01",
+      "status": "auto",
+      "last_installation_date": 1789151426,
+      "last_adjustment_date": null,
+      "_config": {
+        "buzzer": true,
+        "notify": true
+      },
+      "_offset": {
+        "offset": 0,
+        "last_adjustment_date": 0
+      },
+      "_disabled": false,
+      "_info": {
+        "hwid": "000000000000",
+        "hw_revision": "1.0.0",
+        "version": "1.1.8",
+        "last_fota_time": 1789151426
+      },
+      "detected": false
+    },
+    {
+      "type": "temperature",
+      "uid": "0x00A02",
+      "name": "Température A02",
+      "status": "auto",
+      "last_installation_date": 1789151426,
+      "last_adjustment_date": null,
+      "_config": {
+        "buzzer": true,
+        "notify": true
+      },
+      "_offset": {
+        "offset": 0,
+        "last_adjustment_date": 0
+      },
+      "_disabled": false,
+      "_info": {
+        "hwid": "000000000000",
+        "hw_revision": "1.2_25A",
+        "version": "1.1.8",
+        "last_fota_time": 1789151426
+      },
+      "value": 25.0,
+      "ranges": [
+        21,
+        23,
+        26,
+        28
+      ]
+    },
+    {
+      "type": "ato",
+      "uid": "0x00A03",
+      "name": "ATO A03",
+      "status": "auto",
+      "last_installation_date": 1789151426,
+      "last_adjustment_date": null,
+      "_config": {
+        "buzzer": false,
+        "notify": true,
+        "temp_buzzer": false,
+        "temp_notify": true
+      },
+      "_offset": {
+        "offset": 0,
+        "last_adjustment_date": 0
+      },
+      "_disabled": false,
+      "_info": {
+        "hwid": "000000000000",
+        "hw_revision": "1.0.0",
+        "version": "1.1.8",
+        "last_fota_time": 1789151426
+      },
+      "water_level": "above",
+      "temp": 25.1,
+      "temp_ranges": [
+        21,
+        23,
+        26,
+        28
+      ]
+    }
+  ],
+  "ports": [
+    {
+      "number": 0,
+      "name": "S1",
+      "mode": "off",
+      "type": "other",
+      "state": "unknown",
+      "user_config_mode": "off",
+      "consumption": 0
+    }
+  ],
   "buzzer": {
     "active": false,
     "cause": "none",
     "dismissed": false
   },
-  "cable_connected": true,
-  "connected_device": {
-    "hwid": "__REEFBEAT_PAIRED_HW_ID__",
-    "internet_connected": true,
-    "state": "paired_connected"
-  },
-  "is_internet_connected": true,
-  "leak_detector": true,
-  "mode": "setup",
-  "ports": [
-    {
-      "consumption": 0,
-      "mode": "setup",
-      "name": "S1",
-      "number": 0,
-      "state": "unknown",
-      "type": "unknown",
-      "user_config_mode": "setup"
-    }
-  ],
-  "probes": []
+  "leak_detector": true
 }

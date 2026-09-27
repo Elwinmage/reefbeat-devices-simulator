@@ -1,92 +1,236 @@
 {
+  "mode": "auto",
+  "is_internet_connected": true,
+  "cable_connected": true,
+  "connected_device": {
+    "state": "paired_connected",
+    "hwid": "__REEFBEAT_PAIRED_HW_ID__",
+    "internet_connected": true
+  },
+  "probes": [
+    {
+      "type": "leak",
+      "uid": "0x0032B",
+      "name": "Fuite 32B",
+      "status": "auto",
+      "last_installation_date": 1786657191,
+      "last_adjustment_date": null,
+      "_config": {
+        "buzzer": true,
+        "notify": true
+      },
+      "_offset": {
+        "offset": 0,
+        "last_adjustment_date": 0
+      },
+      "_disabled": false,
+      "_info": {
+        "hwid": "383835366136",
+        "hw_revision": "1.0.0",
+        "version": "1.1.8",
+        "last_fota_time": 1789151399
+      },
+      "detected": false
+    },
+    {
+      "type": "temperature",
+      "uid": "0x000F7",
+      "name": "Température F7",
+      "status": "auto",
+      "last_installation_date": 1789151399,
+      "last_adjustment_date": null,
+      "_config": {
+        "buzzer": true,
+        "notify": true
+      },
+      "_offset": {
+        "offset": 0,
+        "last_adjustment_date": 0
+      },
+      "_disabled": false,
+      "_info": {
+        "hwid": "383835366136",
+        "hw_revision": "1.2_25A",
+        "version": "1.1.8",
+        "last_fota_time": 1789151399
+      },
+      "value": 25.2,
+      "ranges": [
+        21,
+        23,
+        26,
+        28
+      ]
+    },
+    {
+      "type": "ec",
+      "uid": "0x007BF",
+      "name": "Salinité 7BF",
+      "status": "auto",
+      "last_installation_date": 1789151399,
+      "last_adjustment_date": null,
+      "_config": {
+        "buzzer": true,
+        "notify": true,
+        "temp_buzzer": false,
+        "temp_notify": true
+      },
+      "_offset": {
+        "offset": 0,
+        "last_adjustment_date": 0
+      },
+      "_disabled": false,
+      "_info": {
+        "hwid": "616361373034",
+        "hw_revision": "1.0.0",
+        "version": "1.1.8",
+        "last_fota_time": 1789151399
+      },
+      "value": 53.0,
+      "ranges": [
+        46.2,
+        49,
+        54.4,
+        59.7
+      ],
+      "unit": "ec",
+      "ppt": 34.7,
+      "sg": 1.0264,
+      "temp": 25.3,
+      "temp_ranges": [
+        21,
+        23,
+        26,
+        28
+      ]
+    },
+    {
+      "type": "ph",
+      "uid": "0x00B39",
+      "name": "pH B39",
+      "status": "auto",
+      "last_installation_date": 1789151399,
+      "last_adjustment_date": null,
+      "_config": {
+        "buzzer": false,
+        "notify": true,
+        "temp_buzzer": false,
+        "temp_notify": true
+      },
+      "_offset": {
+        "offset": 0,
+        "last_adjustment_date": 0
+      },
+      "_disabled": false,
+      "_info": {
+        "hwid": "383835366136",
+        "hw_revision": "2.3.0",
+        "version": "1.1.8",
+        "last_fota_time": 1789151399
+      },
+      "value": 8.15,
+      "ranges": [
+        7.6,
+        7.9,
+        8.4,
+        8.6
+      ],
+      "temp": 25.1,
+      "temp_ranges": [
+        21,
+        23,
+        26,
+        28
+      ]
+    },
+    {
+      "type": "orp",
+      "uid": "0x0071F",
+      "name": "ORP 71F",
+      "status": "auto",
+      "last_installation_date": 1789151399,
+      "last_adjustment_date": null,
+      "_config": {
+        "buzzer": false,
+        "notify": true
+      },
+      "_offset": {
+        "offset": 0,
+        "last_adjustment_date": 0
+      },
+      "_disabled": false,
+      "_info": {
+        "hwid": "623061363034",
+        "hw_revision": "1.0.0",
+        "version": "1.1.8",
+        "last_fota_time": 1789151399
+      },
+      "value": 250,
+      "ranges": [
+        100,
+        200,
+        400,
+        480
+      ]
+    },
+    {
+      "type": "ato",
+      "uid": "0x0024E",
+      "name": "Temp. osmolateur 24E",
+      "status": "auto",
+      "last_installation_date": 1789151399,
+      "last_adjustment_date": null,
+      "_config": {
+        "buzzer": false,
+        "notify": true,
+        "temp_buzzer": false,
+        "temp_notify": true
+      },
+      "_offset": {
+        "offset": 0,
+        "last_adjustment_date": 0
+      },
+      "_disabled": false,
+      "_info": {
+        "hwid": "616361373034",
+        "hw_revision": "1.0.0",
+        "version": "1.1.8",
+        "last_fota_time": 1789151399
+      },
+      "water_level": "below",
+      "temp": 25.0,
+      "temp_ranges": [
+        21,
+        23,
+        26,
+        28
+      ]
+    }
+  ],
+  "ports": [
+    {
+      "number": 0,
+      "name": "S1",
+      "mode": "off",
+      "type": "other",
+      "state": "unknown",
+      "user_config_mode": "off",
+      "consumption": 0
+    },
+    {
+      "number": 1,
+      "name": "S2",
+      "mode": "off",
+      "type": "other",
+      "state": "unknown",
+      "user_config_mode": "off",
+      "consumption": 0
+    }
+  ],
   "buzzer": {
     "active": false,
     "cause": "none",
     "dismissed": false
   },
-  "cable_connected": true,
-  "connected_device": {
-    "hwid": "__REEFBEAT_PAIRED_HW_ID__",
-    "internet_connected": true,
-    "state": "paired_connected"
-  },
-  "is_internet_connected": true,
-  "leak_detector": true,
-  "mode": "auto",
-  "ports": [
-    {
-      "auto_fill": true,
-      "consumption": 0,
-      "is_pump_on": false,
-      "last_pump_on_cause": "unknown",
-      "mode": "auto",
-      "name": "ATO",
-      "number": 0,
-      "temp_log_enabled": true,
-      "today_volume": 0,
-      "type": "ato",
-      "uid": "0x004C6",
-      "user_config_mode": "auto",
-      "volume_left": 13000
-    },
-    {
-      "consumption": 0,
-      "mode": "off",
-      "name": "Ozone1",
-      "number": 1,
-      "state": "unknown",
-      "type": "other",
-      "user_config_mode": "off"
-    }
-  ],
-  "probes": [
-    {
-      "last_installation_date": 1784391243,
-      "level": "danger",
-      "name": "Ozone",
-      "status": "auto",
-      "type": "orp",
-      "uid": "0x0071C",
-      "value": 186
-    },
-    {
-      "ec": 54.8,
-      "last_adjustment_date": null,
-      "last_installation_date": 1784392274,
-      "level": "acceptable",
-      "measurement_unit": "ppt",
-      "name": "Salinity",
-      "ppt": 36.3,
-      "sg": 1.0274,
-      "status": "auto",
-      "temp_level": "acceptable",
-      "temp_value": 26,
-      "type": "ec",
-      "uid": "0x00432",
-      "value": 36.3
-    },
-    {
-      "last_adjustment_date": 1784394757,
-      "last_installation_date": 1784392364,
-      "level": "desired",
-      "name": "pH",
-      "status": "auto",
-      "temp_level": "acceptable",
-      "temp_value": 26.2,
-      "type": "ph",
-      "uid": "0x00132",
-      "value": 8.11
-    },
-    {
-      "last_adjustment_date": 1784983900,
-      "last_installation_date": 1784983713,
-      "name": "Level & Temp",
-      "status": "auto",
-      "temp_level": "acceptable",
-      "temp_value": 26.1,
-      "type": "ato",
-      "uid": "0x004C6",
-      "water_level": "desired_level_1"
-    }
-  ]
+  "leak_detector": true
 }
