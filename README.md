@@ -79,6 +79,13 @@ Each entry controls a single device server:
   - `no_GET`: List of paths that must not allow GET.
   - `PUT` / `POST`: Optional lists of paths that allow those methods.
 - `post_actions`: Optional computed updates keyed by request path.
+- `tls`: Serve over HTTPS (the cloud account). The certificate is
+  `tls_cert` / `tls_key` when given, else a self-signed one made once with
+  `openssl` under `config/tls/`.
+- `username` / `password` (cloud account): credentials the token endpoint
+  checks; left out, any credentials are accepted.
+- `devices` (cloud account): names of the simulated devices the account
+  lists; left out, the ReefLEDs.
 
 `post_actions` example conceptually:
 
@@ -222,6 +229,74 @@ Handled in `function_extension/rs_power.py`, besides the fixture machinery
 Devices reach each other through `function_extension/registry.py`: all the
 simulated devices run in one process.
 
+### ReefLED Lamps (G1 / G2)
+
+Handled in `function_extension/rs_led.py`, for the three lamps of
+`config.json` (`LED_G1_160`, `LED_G2` an RSLED115, `LED_G1_90`), so a virtual
+LED of the integration can group them:
+
+- the week of programs, one per ISO weekday, written in the ReefBeat app's
+  order: `POST /preset_name/<day>` `{"name"}`, the clouds, `POST /auto/<day>`,
+  then `POST /auto/apply`. A program replaces the day's one as a whole:
+  `{white, blue, moon}` on a G1, `{color, moon}` on a G2 (`color` points
+  `{t, i1, k1, i2, k2}`), with its clouds inside on a G2 (also read back on
+  `/clouds/<day>`);
+- `POST /clouds/<day>` `{from, to, intensity, cloud_duration,
+  no_cloud_duration}`; `DELETE /clouds/<day>` removes them (read back as
+  `{}`);
+- a program name lands on the endpoints the firmware has: per day
+  (`/preset_name/<day>`), in the list (`/preset_name`), or both. The write is
+  accepted even when only the list exists, as the app sends it to every lamp;
+- the light follows the program: in `auto` mode `/manual` and the
+  dashboard's `manual` give the levels of today's program at the current
+  time (yesterday's one when it runs past midnight, the week wrapping from
+  Sunday to Monday), dimmed while a cloud passes (Low 75 %, Medium 55 %,
+  High 35 % of the light, for `cloud_duration` minutes every
+  `cloud_duration + no_cloud_duration`) and during an acclimation. A G2
+  reports its intensity and colour temperature, and white/blue sensors
+  derived from them. The dashboard's `current_program` shows today's name;
+- `POST /manual` (white/blue/moon, or kelvin/intensity on a G2) and
+  `POST /timer` set the levels by hand and the mode; `POST /mode`;
+  `POST /acclimation` and `/moonphase` are mirrored on the dashboard;
+  `POST /identify`.
+
+The lamps follow the clock of `/sim/clock`, like the schedules of the other
+devices: pin it to watch a program play at any time of day.
+
+### Cloud Account
+
+Handled in `function_extension/rs_cloud.py`: the `CLOUD` entry of
+`config.json` serves a ReefBeat account over HTTPS (port 443, self-signed
+certificate), as `cloud.reef-beat.com` does. In ha-reefbeat-component,
+create the local flag file that lets the account form ask for its server
+(git-ignored, as for ha-aquamedic-component):
+
+```bash
+cp custom_components/redsea/simulator_enabled.example custom_components/redsea/.simulator_enabled
+```
+
+Restart Home Assistant, add a *ReefBeat Cloud API* device and give the
+simulator's address (`192.168.0.251`) as the cloud server: any credentials
+are accepted unless `username`/`password` are set.
+
+| Request | Answer |
+| ------- | ------ |
+| `POST /oauth/token` | A bearer token (form body, password grant). |
+| `GET /user`, `/aquarium` | Fixtures (`devices/CLOUD`): a sanitized user and one aquarium. |
+| `GET /device` | The simulated devices, built from their `/device-info` (hwid, model, IP, firmware), all in the aquarium: the lamps by default, or the `devices` of the config. |
+| `GET /reef-lights/library?include=all` | G1 programs `{id, uid, aquarium_id, aquarium_uid, name, program, clouds}`: the Red Sea ones (12K … 23K) and a user one. |
+| `GET /v2/reef-lights/library` | G2 programs `{id, name, color, moon, clouds}`. |
+| `POST <library>` | Adds a program (new `uid` / `id`), `201`. |
+| `PUT <library>/<uid>` | Updates one: the whole program is sent, clouds left out are removed. |
+| `DELETE <library>/<uid>` | Removes one. |
+| `GET /reef-wave/library`, `/reef-dosing/supplement` | Fixtures. |
+| `GET /firmware/api/<type>/latest` | The firmware the simulated devices of that type run: no update is offered. |
+
+With the lamps linked to this account, the reef card's program editor lists
+the library, saves new programs and updates or deletes the user's ones,
+without touching a real account. What is written stays in memory until the
+simulator restarts.
+
 ### Simulator Controls
 
 Endpoints that exist only in the simulator, to play a scenario:
@@ -231,7 +306,7 @@ Endpoints that exist only in the simulator, to play a scenario:
 | `PUT /sim/probe?type=<t>&uid=<u>` | Set what a hub probe measures: `value`, `temp`, `water_level`, `leak_status`, `ppt`, `sg`; or unplug / plug it: `status` `disconnected` / `connected`. Raw values: offsets still apply. |
 | `PUT /sim/buzzer` | `{"dismissed": true}`, as when the hub button is pressed. |
 | `GET /sim/probes` (hub) | Raw readings of every hub probe, before offsets: what a scenario reads back and restores. |
-| `GET\|PUT /sim/clock` (hub or strip) | `{"minute": 0-1439}` pins the clock the schedules follow, for every simulated device of the process; `{"minute": null}` goes back to the real time. |
+| `GET\|PUT /sim/clock` (hub, strip or lamp) | `{"minute": 0-1439}` pins the clock the schedules follow, for every simulated device of the process; `{"minute": null}` goes back to the real time. |
 | `PUT /sim/watts` (hub or strip) | `{"watts": {"<n>": W}}`: what 12V port / socket `n` (0-based) draws while powered, reported as its `consumption`; `{}` stops it. |
 | `GET\|PUT /sim/temperature` (strip) | `{"value": °C}`: what the strip's local probe measures, before its offset. |
 
@@ -301,7 +376,8 @@ python -m pytest tests
 ```
 
 The tests build the devices from the fixtures without binding the
-configured IPs; `tests/test_http.py` serves two of them on localhost.
+configured IPs; `tests/test_http.py` serves two of them on localhost, and
+`tests/test_rs_cloud.py` the cloud account over HTTPS (it needs `openssl`).
 
 ## Fixture Exporter (Create Fixtures)
 
@@ -424,7 +500,8 @@ devices/CLOUD/
 ```
 
 Identifiers are sanitized, but relationships between user, aquarium,
-and device are preserved.
+and device are preserved. The simulated account serves its own `/device`
+list (the simulated devices), not an exported one.
 
 ---
 

@@ -1,0 +1,33 @@
+[
+    {
+        "id": 111111,
+        "uid": "00000000-0000-0000-0000-00000000a001",
+        "user_uid": "00000000-0000-0000-0000-000000000000",
+        "name": "Simulated reef",
+        "measuring_unit": "metric",
+        "system_type": "reefer",
+        "system_series": "G2",
+        "system_model": "350",
+        "serial_number": "SIMU000001",
+        "water_volume": 350,
+        "net_water_volume": 280,
+        "height": 55,
+        "length": 120,
+        "width": 50,
+        "timezone_offset": 120,
+        "online": true,
+        "staggered": false,
+        "staggered_delay": 0,
+        "dst_enabled": true,
+        "properties": {
+            "emergency": false,
+            "feeding": false,
+            "maintenance": false,
+            "led_emergency": false,
+            "shortcut_reminder": false,
+            "groups": [],
+            "staggered": false,
+            "staggered_delay": 0
+        }
+    }
+]

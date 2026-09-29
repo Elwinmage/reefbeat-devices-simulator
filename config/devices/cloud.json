@@ -1,0 +1,8 @@
+{
+  "type": "CLOUD",
+  "access": {
+    "no_GET": [],
+    "PUT": []
+  },
+  "post_actions": []
+}

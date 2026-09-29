@@ -115,6 +115,15 @@
           }
         }
       ]
+    },
+    {
+      "enabled": true,
+      "name": "CLOUD",
+      "base_url": "devices/CLOUD",
+      "ip": "192.168.0.251",
+      "port": 443,
+      "tls": true,
+      "actions": "config/devices/cloud.json"
     }
   ]
 }

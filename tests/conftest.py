@@ -52,6 +52,10 @@ def call(server: Any, method: str, path: str, body: Any = None) -> Optional[tupl
     """Send a request to the extension modules, as the HTTP handler does."""
     result = fx.rs_control.handle(server, method, path, body)
     if result is None:
+        result = fx.rs_led.handle(server, method, path, body)
+    if result is None:
+        result = fx.rs_cloud.handle(server, method, path, body)
+    if result is None:
         result = fx.handle_local_temp(server, method, path, body)
     return result
 

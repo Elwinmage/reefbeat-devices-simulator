@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import ssl
 import subprocess
 import sys
 import time
@@ -108,6 +109,45 @@ class ServerConfig(Protocol):
     modifiers: Optional[Sequence[ModifierFunction]]
 
 
+TLS_DIR = "config/tls"
+
+
+def tls_context(config: Any) -> ssl.SSLContext:
+    """Server TLS context of a device served over HTTPS (the cloud account).
+
+    Uses ``tls_cert``/``tls_key`` from the device config when given, else a
+    self-signed certificate made once with openssl under ``config/tls``
+    (the integration does not verify the cloud's certificate).
+    """
+    cert = getattr(config, "tls_cert", None) or os.path.join(TLS_DIR, "cert.pem")
+    key = getattr(config, "tls_key", None) or os.path.join(TLS_DIR, "key.pem")
+    if not (os.path.exists(cert) and os.path.exists(key)):
+        os.makedirs(os.path.dirname(cert) or ".", exist_ok=True)
+        subprocess.run(
+            [
+                "openssl",
+                "req",
+                "-x509",
+                "-newkey",
+                "rsa:2048",
+                "-nodes",
+                "-days",
+                "3650",
+                "-subj",
+                "/CN=cloud.reef-beat.com",
+                "-keyout",
+                key,
+                "-out",
+                cert,
+            ],
+            check=True,
+            capture_output=True,
+        )
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(cert, key)
+    return context
+
+
 class MyServer(HTTPServer):
     """HTTP server that serves fixture data and maintains an in-memory DB.
 
@@ -171,6 +211,10 @@ class MyServer(HTTPServer):
             print("Creating IP: %s " % config.ip)
             time.sleep(3)
         super().__init__((self.config.ip, self.config.port), handler)
+        if getattr(self.config, "tls", False):
+            self.socket = tls_context(self.config).wrap_socket(
+                self.socket, server_side=True
+            )
         self.load_fixtures()
 
     def load_fixtures(self) -> None:
@@ -501,8 +545,13 @@ class HttpServer(BaseHTTPRequestHandler):
             try:
                 r_data = json.loads(body)
             except ValueError:
-                self.log("%s %s: ignoring non-JSON body" % (method, self.path))
-                r_data = ""
+                content_type = str(self.headers.get("Content-Type") or "")
+                if content_type.startswith("application/x-www-form-urlencoded"):
+                    # OAuth token requests of the cloud account
+                    r_data = function_extension.rs_cloud.parse_form(body)
+                else:
+                    self.log("%s %s: ignoring non-JSON body" % (method, self.path))
+                    r_data = ""
         self.log_reqst(method, r_data)
         # RSCONTROL probe hub / RSPower local-temperature writes are handled by
         # the extension modules before the generic merge machinery.
@@ -707,13 +756,18 @@ class HttpServer(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _try_extension(self, method: str, body: Any) -> bool:
-        """Dispatch RSCONTROL-probe / RSPower-local-temp endpoints.
+        """Dispatch RSCONTROL-probe / RSPower-local-temp / ReefLED / cloud
+        endpoints.
 
         Returns True when an extension module owned the request and a response
         was already written; False to let the generic machinery handle it.
         """
         server = cast(MyServer, self.server)
         result = function_extension.rs_control.handle(server, method, self.path, body)
+        if result is None:
+            result = function_extension.rs_led.handle(server, method, self.path, body)
+        if result is None:
+            result = function_extension.rs_cloud.handle(server, method, self.path, body)
         if result is None:
             result = function_extension.handle_local_temp(
                 server, method, self.path, body

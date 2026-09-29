@@ -5,3 +5,4 @@ __pycache__/
 .reefbeat_sanitize_map.json
 **/.raw/
 ato_timelapse.conf
+config/tls/
