@@ -243,7 +243,11 @@ LED of the integration can group them:
   `/clouds/<day>`);
 - `POST /clouds/<day>` `{from, to, intensity, cloud_duration,
   no_cloud_duration}`; `DELETE /clouds/<day>` removes them (read back as
-  `{}`);
+  `{}`). As the firmware, clouds must stay inside the day of light of the
+  program the lamp holds, and a program must keep the clouds held inside
+  its day, else `500` "Cloud period is outside the preset [rise:set]
+  interval": a program with a shorter day is written after removing the
+  clouds, which come back after it;
 - a program name lands on the endpoints the firmware has: per day
   (`/preset_name/<day>`), in the list (`/preset_name`), or both. The write is
   accepted even when only the list exists, as the app sends it to every lamp;

@@ -77,6 +77,17 @@ def _device_info(device: Any) -> Optional[dict[str, Any]]:
     return None
 
 
+def _hwid(device: Any, info: dict[str, Any]) -> Any:
+    """Hardware id of a device, as the integration reads it: a RSLED90
+    reports "null" on /device-info, its uuid on / stands for it."""
+    hwid = info.get("hwid")
+    if hwid in (None, "null"):
+        root = _data(device, "/")
+        if isinstance(root, dict) and root.get("uuid"):
+            return root["uuid"]
+    return hwid
+
+
 def _listed(server: Any, device: Any, info: dict[str, Any]) -> bool:
     names = getattr(server.config, "devices", None)
     if names:
@@ -102,7 +113,7 @@ def devices(server: Any) -> list[dict[str, Any]]:
                 "aquarium_id": aq.get("id"),
                 "aquarium_uid": aq.get("uid"),
                 "name": info.get("name"),
-                "hwid": info.get("hwid"),
+                "hwid": _hwid(device, info),
                 "type": info.get("hw_type"),
                 "model": info.get("hw_model"),
                 "mac": wifi.get("mac", ""),

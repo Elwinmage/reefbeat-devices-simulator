@@ -80,7 +80,7 @@ def test_moon_runs_past_midnight(g1: Any, monkeypatch: pytest.MonkeyPatch) -> No
     assert manual(g1)["moon"] == 10
 
 
-def test_app_write_order(g1: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_order(g1: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     program = {
         "white": {"rise": 1500, "set": 2000, "points": [{"t": 100, "i": 80}]},
         "blue": {"rise": 1500, "set": 2000, "points": [{"t": 100, "i": 90}]},
@@ -94,8 +94,14 @@ def test_app_write_order(g1: Any, monkeypatch: pytest.MonkeyPatch) -> None:
         "no_cloud_duration": 4,
     }
     assert call(g1, "POST", "/preset_name/2", {"name": "Reef-1759130000000"})[0] == 200
-    assert call(g1, "POST", "/clouds/2", clouds)[0] == 200
+    # As the firmware: new clouds outside the program held are refused, and
+    # so is a program leaving the held clouds (Tuesday: 14:19..16:36) out
+    assert call(g1, "POST", "/clouds/2", clouds) == led.OUTSIDE_PRESET
+    assert call(g1, "POST", "/auto/2", program) == led.OUTSIDE_PRESET
+    # Clouds removed, program, then its clouds
+    assert call(g1, "DELETE", "/clouds/2")[0] == 200
     assert call(g1, "POST", "/auto/2", program)[0] == 200
+    assert call(g1, "POST", "/clouds/2", clouds)[0] == 200
     call(g1, "POST", "/mode", {"mode": "manual"})
     assert call(g1, "POST", "/auto/apply", {})[0] == 200
     assert g1.get_data("/auto/2") == program
@@ -249,7 +255,9 @@ def test_over_http() -> None:
     try:
         assert request(server, "GET", "/preset_name")[0] == 200
         assert request(server, "POST", "/preset_name/1", {"name": "A-1"})[0] == 200
-        assert request(server, "POST", "/clouds/1", {"from": 1, "to": 2})[0] == 200
+        assert request(server, "POST", "/clouds/1", {"from": 1, "to": 2})[0] == 500
+        clouds = {"from": 900, "to": 950}
+        assert request(server, "POST", "/clouds/1", clouds)[0] == 200
         assert request(server, "DELETE", "/clouds/1")[0] == 200
         assert request(server, "GET", "/clouds/1") == (200, {})
         status, _ = request(server, "POST", "/auto/1", {"moon": {"rise": 0}})
@@ -260,3 +268,18 @@ def test_over_http() -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_clouds_checked_against_the_day() -> None:
+    program = {"white": {"rise": 600, "set": 1200}, "moon": {"rise": 1300}}
+    assert led.clouds_fit({"from": 600, "to": 1200}, program)
+    assert not led.clouds_fit({"from": 1250, "to": 1300}, program)
+    assert led.clouds_fit({}, program)
+    assert led.clouds_fit({"from": 1, "to": 2}, {"moon": {}})
+    assert led.light_window(None) is None
+    g2 = build("LED_G2")
+    body = {
+        "color": {"rise": 600, "set": 700, "points": []},
+        "clouds": {"from": 650, "to": 800, "intensity": "Low"},
+    }
+    assert call(g2, "POST", "/auto/1", body) == led.OUTSIDE_PRESET

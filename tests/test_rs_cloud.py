@@ -54,6 +54,9 @@ def test_account_and_devices(cloud: Any, lamps: list) -> None:
     assert g1["hwid"] == "521f271d32c8"
     assert g1["aquarium_uid"] == aquarium["uid"]
     assert g1["ip_address"] == "192.168.0.242"
+    # A RSLED90 reports no hwid: its uuid stands for it, as in the integration
+    g1_90 = next(d for d in devices if d["model"] == "RSLED90")
+    assert g1_90["hwid"] == "d0ef768c2096"
     assert call(cloud, "GET", "/firmware/api/reef-lights/latest?board=esp32")[1] == {
         "version": "1.8.0"
     }

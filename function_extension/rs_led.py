@@ -400,6 +400,45 @@ def set_preset_name(server: Any, weekday: int, name: str) -> None:
 # --------------------------------------------------------------------------
 # Requests
 # --------------------------------------------------------------------------
+# The firmware's answer to clouds outside the day of the program
+OUTSIDE_PRESET = (
+    500,
+    {
+        "success": False,
+        "message": "json structure is wrong.Cloud period is outside the "
+        "preset [rise:set] interval",
+    },
+)
+
+
+def light_window(program: Any) -> Optional[Tuple[float, float]]:
+    """First rise and last set of a program's light (moon left out)."""
+    if not isinstance(program, dict):
+        return None
+    channels = [
+        program[key]
+        for key in ("white", "blue", "color")
+        if isinstance(program.get(key), dict)
+    ]
+    if not channels:
+        return None
+    return (
+        min(_num(ch.get("rise")) for ch in channels),
+        max(_num(ch.get("set")) for ch in channels),
+    )
+
+
+def clouds_fit(clouds: Any, program: Any) -> bool:
+    """Whether clouds (if any) stay inside the day of a program, as the
+    firmware requires of every clouds/program pair it holds."""
+    if not isinstance(clouds, dict) or "from" not in clouds or "to" not in clouds:
+        return True
+    window = light_window(program)
+    if window is None:
+        return True
+    return window[0] <= _num(clouds["from"]) and _num(clouds["to"]) <= window[1]
+
+
 def _write_program(server: Any, weekday: int, body: Any) -> Response:
     if not isinstance(body, dict):
         return 400, {"success": False, "message": "program expected"}
@@ -408,12 +447,17 @@ def _write_program(server: Any, weekday: int, body: Any) -> Response:
         # A G2 carries its clouds in its program; they are read back on
         # /clouds/<day> too
         clouds = program.get("clouds")
+        if not clouds_fit(clouds, program):
+            return OUTSIDE_PRESET
         if isinstance(clouds, dict) and "from" in clouds:
             full = {"cloud_duration": 4, "no_cloud_duration": 6, **clouds}
             _set(server, "/clouds/%d" % weekday, full)
         else:
             program.pop("clouds", None)
             _set(server, "/clouds/%d" % weekday, {})
+    elif not clouds_fit(_get(server, "/clouds/%d" % weekday), program):
+        # The clouds the lamp holds must stay inside the new day
+        return OUTSIDE_PRESET
     _set(server, "/auto/%d" % weekday, program)
     return 200, dict(_OK)
 
@@ -421,6 +465,9 @@ def _write_program(server: Any, weekday: int, body: Any) -> Response:
 def _write_clouds(server: Any, weekday: int, body: Any) -> Response:
     if not isinstance(body, dict):
         return 400, {"success": False, "message": "clouds expected"}
+    # Checked against the program the lamp holds
+    if not clouds_fit(body, _get(server, "/auto/%d" % weekday)):
+        return OUTSIDE_PRESET
     _set(server, "/clouds/%d" % weekday, dict(body))
     return 200, dict(_OK)
 
