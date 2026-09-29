@@ -16,6 +16,14 @@ besides the generic fixture machinery (socket config, toggles, schedules):
   ``rs_control``), and the socket intent ``PUT /subscribe`` /
   ``PUT /unsubscribe``;
 - ``POST /setup-finish``.
+
+Simulator-only endpoints, to play a scenario without hardware:
+
+- ``GET|PUT /sim/temperature``: ``{"value": <°C>}``, what the local probe
+  measures (before its offset);
+- ``PUT /sim/watts``: ``{"watts": {"<socket number>": <W>}}``, what a socket
+  draws while powered (its ``consumption`` on ``/dashboard``);
+- ``GET|PUT /sim/clock``: the schedules clock, as on the hub.
 """
 
 from __future__ import annotations
@@ -135,18 +143,32 @@ def apply_socket_schedules(
         for index, socket in enumerate(sockets):
             if not isinstance(socket, dict):
                 continue
-            mode = socket.get("mode")
-            if mode == "schedule":
-                entry = server._db.get(f"/socket/{index}/config/schedule", {})
-                schedule = entry.get("data")
-                if not isinstance(schedule, dict):
-                    continue
-                powered = probe_rules.is_within(schedule.get("intervals"), minute)
-                socket["state"] = "on" if powered else "standby"
-            elif mode == "sensor":
-                powered = _sensor_powered(server, index)
-                socket["state"] = "on" if powered else "standby"
+            _drive_socket(server, index, socket, minute)
+            socket["consumption"] = rs_control.consumption(
+                server,
+                index,
+                socket.get("state") == "on",
+                socket.get("consumption", 0),
+            )
     return data
+
+
+def _drive_socket(server: Any, index: int, socket: dict[str, Any], minute: int) -> None:
+    """Set the state of a socket following a schedule or a probe.
+
+    Sockets in any other mode keep the state their toggles wrote.
+    """
+    mode = socket.get("mode")
+    if mode == "schedule":
+        entry = server._db.get(f"/socket/{index}/config/schedule", {})
+        schedule = entry.get("data")
+        if not isinstance(schedule, dict):
+            return
+        powered = probe_rules.is_within(schedule.get("intervals"), minute)
+        socket["state"] = "on" if powered else "standby"
+    elif mode == "sensor":
+        powered = _sensor_powered(server, index)
+        socket["state"] = "on" if powered else "standby"
 
 
 # ---------------------------------------------------------------------------
@@ -493,6 +515,31 @@ def _get(server: Any, path: str):
     return None
 
 
+def _sim(server: Any, method: str, path: str, body: Any):
+    """Simulator-only endpoints of a strip."""
+    st = _pw_state(server)
+    if path == "/sim/temperature":
+        if method == "GET":
+            return 200, {"installed": st["installed"], "value": st["value"]}
+        if method == "PUT":
+            value = probe_rules.as_float(
+                body.get("value") if isinstance(body, dict) else None
+            )
+            if value is None:
+                return 400, {"success": False, "message": "Missing value"}
+            st["value"] = value
+            _pw_reflect(server)
+            return 200, {"success": True, "value": value}
+    if path == "/sim/watts" and method == "PUT":
+        return rs_control.sim_watts(server, body)
+    if path == "/sim/clock":
+        if method == "GET":
+            return 200, {"minute": probe_rules.clock()}
+        if method == "PUT":
+            return rs_control.sim_clock(body)
+    return None
+
+
 def handle_local_temp(server: Any, method: str, raw_path: str, body: Any):
     """Handle an RSPower request this module owns.
 
@@ -503,6 +550,8 @@ def handle_local_temp(server: Any, method: str, raw_path: str, body: Any):
     path = _urlparse(raw_path).path
     with registry.LOCK:
         st = _pw_state(server)
+        if path.startswith("/sim/"):
+            return _sim(server, method, path, body)
         if method == "GET":
             return _get(server, path)
         if method == "POST":

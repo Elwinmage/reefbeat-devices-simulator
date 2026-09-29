@@ -230,11 +230,68 @@ Endpoints that exist only in the simulator, to play a scenario:
 | ------- | ------ |
 | `PUT /sim/probe?type=<t>&uid=<u>` | Set what a hub probe measures: `value`, `temp`, `water_level`, `leak_status`, `ppt`, `sg`; or unplug / plug it: `status` `disconnected` / `connected`. Raw values: offsets still apply. |
 | `PUT /sim/buzzer` | `{"dismissed": true}`, as when the hub button is pressed. |
+| `GET /sim/probes` (hub) | Raw readings of every hub probe, before offsets: what a scenario reads back and restores. |
+| `GET\|PUT /sim/clock` (hub or strip) | `{"minute": 0-1439}` pins the clock the schedules follow, for every simulated device of the process; `{"minute": null}` goes back to the real time. |
+| `PUT /sim/watts` (hub or strip) | `{"watts": {"<n>": W}}`: what 12V port / socket `n` (0-based) draws while powered, reported as its `consumption`; `{}` stops it. |
+| `GET\|PUT /sim/temperature` (strip) | `{"value": °C}`: what the strip's local probe measures, before its offset. |
 
 ```bash
 curl -X PUT "http://192.168.0.247/sim/probe?type=leak&uid=0x0032B" \
      -d '{"leak_status": "aquarium_water_leak"}'
 ```
+
+An ATO rule (port or socket following an ATO probe) powers its output while the
+probe reads `below`, whatever `trigger_op` the hub stored: the ReefBeat app
+sends that rule without one.
+
+### ReefControl Timelapse
+
+`scripts/control_timelapse.py` plays a day of reef life on the simulated hub
+and its strip, for a demo or a screen recording of the reef card. Unlike
+`ato_timelapse.py`, which writes display values into Home Assistant, it drives
+the simulator, so the whole chain runs as on real equipment: the probes move,
+the hub rules switch the sockets and 12V ports, the powered outputs act back on
+the water, and the probes move again. Home Assistant only sees what the
+integration polls.
+
+The water is a handful of physical quantities (`temperature`, `ph`, `orp`,
+`ec`, `level`). Every probe reads one of them plus its own bias, so the
+embedded temperatures of the pH, EC and ATO probes follow the temperature probe
+a little apart, as real ones do. Each tick the script advances a virtual clock
+(`speed` simulated minutes per second, pushed with `PUT /sim/clock` so the
+schedules follow the simulated day), reads both dashboards (which makes the
+simulator evaluate the rules), moves the water by its drift and by the effect
+of each powered actuator, plays the events due, and writes the readings back.
+
+```bash
+cd scripts
+./control_timelapse.py --scenario control_demo.yaml --show     # the plan
+./control_timelapse.py --scenario control_demo.yaml --dry-run  # read only
+./control_timelapse.py --scenario control_demo.yaml            # shoot
+./control_timelapse.py --scenario control_demo.yaml --speed 4 --loop
+```
+
+`control_demo.yaml` is a commented example: 24 hours in about 3 minutes, with a
+heater and a fan on the temperature probe, a kalk reactor on the pH probe, a
+reverse-lit refugium, an ATO pump on 12V port 1 following the ATO probe, a
+leak, an acknowledged alarm, an unplugged probe and a drifting sensor that the
+temperature fusion flags.
+
+| Scenario key | Meaning |
+| ------------ | ------- |
+| `hub`, `power` | URL or `config.json` device name; `power` defaults to the hub's `paired_with` (`--hub`, `--power`, `--no-power` override) |
+| `start`, `duration`, `speed`, `tick`, `seed` | Simulated start time and length (`HH:MM`), simulated minutes per real second, real seconds per frame, noise seed |
+| `ambient` | Room air: `mean`, `swing`, `peak` (a sine over the day) |
+| `water` | Starting point of each quantity; anything left out is read from the probes |
+| `physics.<quantity>` | `toward` (a number, `ambient`, or `{day, night, from, to}`), `rate` (share of the gap closed per hour), `noise`; `level.evaporation` (marks per hour), `ec.per_level` (mS/cm gained per mark evaporated) |
+| `actuators` | `socket` (strip) or `port` (hub), numbered from 1; `watts`; `effect` per quantity, per hour while powered |
+| `setup` | `sockets` / `ports` to configure first, through the app's endpoints: `mode` (`on`, `off`, `schedule` with `schedule: [{from, to}]`, `sensor` with `probe`, `sensor`, `when`, `value`, `hysteresis`, `turn`, `default`) and `name` |
+| `events` | `at` (`HH:MM`, optionally with `day`, or `+HH:MM` from the start) and one or more of: `leak` (`aquarium`, `rodi`, `dry`), `unplug` / `plug`, `set` / `nudge` a quantity, `bias` a probe (`probe`, `sensor`, `delta`), `dismiss_buzzer`, `say` |
+
+On exit the probe readings, the clock and the simulated consumption are
+restored. What `setup` configured stays in the simulator: restart it to go back
+to the fixtures. Lower the integration's scan interval of both devices for the
+shoot, a few seconds.
 
 ### Tests
 

@@ -1,0 +1,161 @@
+# A day of reef life on the simulated ReefControl Pro and its RSPOWER6, for
+# control_timelapse.py. 24 simulated hours at 8 minutes per second: about
+# 3 real minutes.
+#
+# The night cools the room: the water follows, the temperature probe drops
+# under 25 °C and the hub powers the heater socket until it is back above
+# 25.2. The afternoon heats it: above 26 °C the fan socket starts. The ATO
+# probe reads the sump going down as it evaporates; the hub powers the ATO
+# pump on port 1 while it reads "below", and the top-up dilutes the salinity
+# the evaporation had concentrated. pH and ORP follow the day, and the
+# reverse-lit refugium keeps the night pH up; the kalk reactor answers a pH
+# that still falls too low. A leak, a dismissed alarm, an unplugged probe and
+# a drifting sensor punctuate the day.
+#
+# Every quantity is a physical one (the water), read by every probe that
+# measures it with its own small bias. Rates are per simulated hour.
+
+name: ReefControl + ReefControl-Power, one day
+
+hub: RSCONTROLPRO          # simulator device name (config.json) or URL
+power: RSPOWER6            # defaults to the hub's `paired_with`
+
+start: "06:00"             # simulated time of the first frame
+duration: "24:00"          # simulated length of the run
+speed: 8                   # simulated minutes per real second
+tick: 1                    # real seconds between two frames
+seed: 42                   # makes the noise repeatable from one take to the next
+
+# Temperature of the room: a sine over the day, coolest 12 h before `peak`.
+ambient:
+  mean: 24.6
+  swing: 3.0
+  peak: "15:00"
+
+# Starting point of the water. Anything left out is read from the probes.
+water:
+  temperature: 25.4
+  ph: 8.12
+  orp: 255
+  ec: 53.0
+  level: 2.2               # 0-1 below, 1-2 mark 1, 2-3 mark 2, 3+ above
+
+physics:
+  temperature:
+    toward: ambient        # the water drifts to the room air...
+    rate: 0.35             # ...closing 35 % of the gap per hour
+    noise: 0.02
+  ph:
+    toward: { day: 8.28, night: 7.85, from: "09:30", to: "21:00" }
+    rate: 0.5
+    noise: 0.005
+  orp:
+    toward: { day: 285, night: 235, from: "09:30", to: "21:00" }
+    rate: 0.3
+    noise: 1.5
+  ec:
+    toward: 53.0
+    rate: 0.0
+    noise: 0.03
+    per_level: 0.45        # mS/cm gained per mark evaporated
+  level:
+    evaporation: 0.55      # marks lost per hour
+
+# What each output does to the water while it is powered. `socket` is on the
+# power strip, `port` a 12V port of the hub, both numbered from 1 as printed
+# on the devices. `watts` is what the simulator reports it drawing.
+actuators:
+  - name: Refugium light
+    socket: 1
+    watts: 36
+    effect: { ph: 0.06, orp: 6 }
+  - name: Return pump
+    socket: 2
+    watts: 45
+    effect: {}
+  - name: Heater
+    socket: 3
+    watts: 150
+    effect: { temperature: 1.6 }
+  - name: Fan
+    socket: 4
+    watts: 12
+    effect: { temperature: -1.4, level: -0.25 }
+  - name: Kalk reactor
+    socket: 5
+    watts: 8
+    effect: { ph: 0.22 }
+  - name: ATO pump
+    port: 1
+    watts: 18
+    effect: { level: 5 }
+
+# Outputs configured before the run, through the same calls as the ReefBeat
+# app. `probe` is a probe type (its first probe) or a uid; `when` above or
+# below `value`, `turn` on or off, `hysteresis` in the unit of the probe,
+# `default` the state when the probe cannot be read.
+setup:
+  sockets:
+    - socket: 1
+      name: Refugium light
+      mode: schedule
+      schedule:
+        - { from: "21:00", to: "09:00" }
+    - socket: 2
+      name: Return pump
+      mode: "on"
+    - socket: 3
+      name: Heater
+      mode: sensor
+      probe: temperature
+      when: below
+      value: 25.0
+      hysteresis: 0.2
+      turn: "on"
+    - socket: 4
+      name: Fan
+      mode: sensor
+      probe: temperature
+      when: above
+      value: 26.0
+      hysteresis: 0.2
+      turn: "on"
+    - socket: 5
+      name: Kalk reactor
+      mode: sensor
+      probe: ph
+      when: below
+      value: 7.98
+      hysteresis: 0.04
+      turn: "on"
+  ports:
+    - port: 1
+      name: ATO pump
+      mode: sensor
+      probe: ato
+
+# `at` is a clock time (its first occurrence from the start, on `day`, 1 by
+# default) or "+HH:MM" from the start.
+events:
+  - at: "11:00"
+    name: Salinity probe fouling
+    bias: { probe: ec, sensor: temp, delta: 1.3 }
+    say: "The EC probe temperature drifts away, the fusion flags it."
+  - at: "12:30"
+    name: Probe cleaned
+    bias: { probe: ec, sensor: temp, delta: -1.3 }
+  - at: "13:30"
+    name: Leak under the tank
+    leak: aquarium
+  - at: "13:50"
+    name: Alarm acknowledged
+    dismiss_buzzer: true
+  - at: "14:20"
+    name: Leak wiped
+    leak: dry
+  - at: "17:00"
+    name: Temperature probe pulled out for cleaning
+    unplug: temperature
+  - at: "17:40"
+    name: Temperature probe back
+    plug: temperature

@@ -35,7 +35,14 @@ Simulator-only endpoints, to play a scenario without hardware:
   ``temp``, ``water_level``, ``leak_status``) or plug / unplug it
   (``status``: ``"connected"`` or ``"disconnected"``);
 - ``PUT /sim/buzzer``: ``{"dismissed": true}`` as when the hub button is
-  pressed.
+  pressed;
+- ``GET /sim/probes``: the raw readings of every probe (before offsets),
+  what a scenario reads back and restores;
+- ``GET|PUT /sim/clock``: ``{"minute": <0-1439>}`` pins the clock the
+  schedules follow, for every simulated device; ``{"minute": null}`` goes
+  back to the real time;
+- ``PUT /sim/watts``: ``{"watts": {"<port number>": <W>}}``, what a 12V
+  port draws while powered (its ``consumption`` on ``/dashboard``).
 
 The whole probe state lives in ``/dashboard``'s ``probes`` list as canonical
 records (raw readings, config and book-keeping under ``_``-prefixed keys);
@@ -66,6 +73,8 @@ _GET_PATHS = frozenset(
         "/temperature-log",
         "/leak/config",
         "/subscription-info",
+        "/sim/probes",
+        "/sim/clock",
     }
 )
 
@@ -1312,6 +1321,64 @@ def _sim_probe(server: Any, ptype: str, uid: str, body: Any) -> Response:
     }
 
 
+# Raw fields a scenario reads back and writes with PUT /sim/probe
+_SIM_FIELDS = ("value", "temp", "water_level", "leak_status", "ppt", "sg", "status")
+
+
+def _sim_probes(server: Any) -> Response:
+    """Raw state of every probe, offsets not applied."""
+    out = []
+    for rec in _probes(server):
+        entry = {"type": rec.get("type"), "uid": rec.get("uid")}
+        for key in _SIM_FIELDS:
+            if key in rec:
+                entry[key] = rec[key]
+        if rec.get("type") == "leak":
+            entry["leak_status"] = _leak_status(rec)
+        out.append(entry)
+    return 200, {"probes": out}
+
+
+def sim_clock(body: Any) -> Response:
+    """``PUT /sim/clock``: pin the schedules clock, or release it."""
+    if not isinstance(body, dict) or "minute" not in body:
+        return _error(400, "Bad body")
+    minute = body["minute"]
+    if minute is not None and not probe_rules.is_number(minute):
+        return _error(400, "minute must be a number or null")
+    probe_rules.set_clock(None if minute is None else int(minute))
+    return 200, {"success": True, "minute": probe_rules.clock()}
+
+
+def sim_watts(server: Any, body: Any) -> Response:
+    """``PUT /sim/watts``: what each output draws while powered.
+
+    Keys are output numbers (0-based, as the API numbers them); an empty
+    mapping stops simulating the consumption.
+    """
+    watts = body.get("watts") if isinstance(body, dict) else None
+    if not isinstance(watts, dict):
+        return _error(400, "Bad body")
+    table: dict[int, float] = {}
+    for key, value in watts.items():
+        number = probe_rules.as_float(value)
+        try:
+            table[int(key)] = number if number is not None else 0.0
+        except (TypeError, ValueError):
+            return _error(400, "Bad output number %r" % key)
+    server._sim_watts = table
+    return 200, {"success": True, "watts": {str(k): v for k, v in table.items()}}
+
+
+def consumption(server: Any, number: Any, powered: bool, current: Any) -> Any:
+    """What an output reports drawing: its simulated watts while powered,
+    0 when not, or the stored value when it is not simulated."""
+    table = getattr(server, "_sim_watts", None) or {}
+    if number not in table:
+        return current
+    return table[number] if powered else 0
+
+
 def _sim_buzzer(server: Any, body: Any) -> Response:
     dash = _dashboard(server)
     if dash is None or not isinstance(body, dict):
@@ -1342,6 +1409,10 @@ def _handle_get(server: Any, path: str, q: dict[str, list[str]]) -> Optional[Res
         return _config_list(server)
     if path == "/subscription-info":
         return 200, _subscription_info(server)
+    if path == "/sim/probes":
+        return _sim_probes(server)
+    if path == "/sim/clock":
+        return 200, {"minute": probe_rules.clock()}
     if path == "/leak/config":
         return 200, _leak_config(server)
     if path == "/probe":
@@ -1415,6 +1486,8 @@ def _handle_put(
             server, _query(q, "type"), _query(q, "uid"), body
         ),
         "/sim/buzzer": lambda: _sim_buzzer(server, body),
+        "/sim/clock": lambda: sim_clock(body),
+        "/sim/watts": lambda: sim_watts(server, body),
     }
     handler = handlers.get(path)
     return handler() if handler else None
@@ -1489,7 +1562,17 @@ def project_control_dashboard(
         ports = []
         for port in data.get("ports", []) or []:
             if isinstance(port, dict):
-                port = dict(port, state=_port_state(server, port))
+                state = _port_state(server, port)
+                port = dict(
+                    port,
+                    state=state,
+                    consumption=consumption(
+                        server,
+                        port.get("number"),
+                        state == "on",
+                        port.get("consumption", 0),
+                    ),
+                )
             ports.append(port)
         projected["ports"] = ports
         projected["buzzer"] = _buzzer(server, data)

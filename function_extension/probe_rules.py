@@ -12,8 +12,31 @@ from datetime import datetime
 from typing import Any, Optional
 
 
+# Virtual clock, shared by every simulated device of the process. None means
+# the real local time; a timelapse sets it so schedules follow its own day.
+_CLOCK: dict[str, Optional[int]] = {"minute": None}
+
+
+def set_clock(minute: Optional[int]) -> None:
+    """Pin the clock the schedules read, or release it with None.
+
+    Args:
+        minute: minutes since midnight (wrapped to one day), or None to go
+            back to the real local time.
+    """
+    _CLOCK["minute"] = None if minute is None else int(minute) % (24 * 60)
+
+
+def clock() -> Optional[int]:
+    """The pinned minute of the day, None when the real time is used."""
+    return _CLOCK["minute"]
+
+
 def minutes_now() -> int:
-    """Minutes elapsed since midnight, local time."""
+    """Minutes elapsed since midnight: the virtual clock when one is set,
+    else the local time."""
+    if _CLOCK["minute"] is not None:
+        return _CLOCK["minute"]
     now = datetime.now()
     return now.hour * 60 + now.minute
 
@@ -80,13 +103,15 @@ def evaluate(rule: dict[str, Any], reading: Any, previous: Optional[bool]) -> bo
     """
     if reading is None:
         return is_on(rule.get("default_state", False))
-    trigger = is_on(rule.get("trigger_op", rule.get("turn_on", True)))
     ptype = rule.get("type")
+    if ptype == "ato":
+        # The level probe asks for water while it reads below its mark. Its
+        # rule carries no trigger_op (the app only sends the fallback), and
+        # the hub's default for a missing one would invert the pump.
+        return reading == "below"
+    trigger = is_on(rule.get("trigger_op", rule.get("turn_on", True)))
     if ptype == "leak":
         condition = bool(reading)
-    elif ptype == "ato":
-        # The level probe asks for water while it reads below its mark
-        condition = reading == "below"
     else:
         value = as_float(reading)
         threshold = as_float(rule.get("value"))

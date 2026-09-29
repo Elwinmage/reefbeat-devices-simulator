@@ -43,3 +43,12 @@ def test_flags_and_schedules() -> None:
     assert not is_within([{"time": 1380, "duration": 120}], 90)
     assert not is_within("x", 0)
     assert not is_within([{"time": "x"}, {"time": 0, "duration": 0}, "y"], 0)
+
+
+def test_ato_rule_without_trigger_op_pumps_only_below() -> None:
+    # The app sends an ATO rule as {uid, type, sensor, default_state}: the
+    # trigger_op the hub stores by default must not invert the pump
+    rule = {"type": "ato", "trigger_op": False, "default_state": False}
+    assert evaluate(rule, "below", None) is True
+    assert evaluate(rule, "desired_level_1", True) is False
+    assert evaluate(rule, None, None) is False
