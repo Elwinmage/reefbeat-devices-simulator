@@ -283,3 +283,30 @@ def test_clouds_checked_against_the_day() -> None:
         "clouds": {"from": 650, "to": 800, "intensity": "Low"},
     }
     assert call(g2, "POST", "/auto/1", body) == led.OUTSIDE_PRESET
+
+
+# --- Staggered sunrise ----------------------------------------------------------
+def test_offset_delays_the_program(g1: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert call(g1, "GET", "/offset") == (200, {"offset": 0})
+    # Tuesday 12:00: white at 50 (see test_g1_program_levels)
+    at(monkeypatch, 2, "12:00")
+    assert manual(g1)["white"] == 50
+    status, answer = call(g1, "POST", "/offset", {"offset": 60})
+    assert status == 200 and answer == {"success": True, "message": "Offset saved"}
+    assert call(g1, "GET", "/offset") == (200, {"offset": 60})
+    # One hour late: at 13:00 the lamp gives what it gave at 12:00
+    at(monkeypatch, 2, "13:00")
+    assert manual(g1)["white"] == 50
+    # A new offset replaces the previous one
+    call(g1, "POST", "/offset", {"offset": 12})
+    assert call(g1, "GET", "/offset") == (200, {"offset": 12})
+    assert call(g1, "DELETE", "/offset")[0] == 200
+    assert call(g1, "GET", "/offset") == (200, {"offset": 0})
+    for bad in ({}, {"offset": -1}, {"offset": True}, {"offset": "5"}, []):
+        assert call(g1, "POST", "/offset", bad)[0] == 400
+
+
+def test_shifted_wraps_around_the_week() -> None:
+    assert led.shifted(2, 60, 30) == (2, 30)
+    assert led.shifted(2, 10, 30) == (1, 1420)
+    assert led.shifted(1, 0, 1) == (7, 1439)

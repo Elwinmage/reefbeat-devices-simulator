@@ -262,7 +262,11 @@ LED of the integration can group them:
 - `POST /manual` (white/blue/moon, or kelvin/intensity on a G2) and
   `POST /timer` set the levels by hand and the mode; `POST /mode`;
   `POST /acclimation` and `/moonphase` are mirrored on the dashboard;
-  `POST /identify`.
+  `POST /identify`;
+- staggered sunrise of a grouped lamp: `GET /offset` `{"offset": <minutes>}`,
+  `POST /offset` `{"offset"}` replaces it (`{"success": true, "message":
+  "Offset saved"}`, as a real lamp answers), `DELETE /offset` sets it back
+  to 0. The lamp then plays its programs that many minutes late.
 
 The lamps follow the clock of `/sim/clock`, like the schedules of the other
 devices: pin it to watch a program play at any time of day.
@@ -295,6 +299,11 @@ are accepted unless `username`/`password` are set.
 | `DELETE <library>/<uid>` | Removes one. |
 | `GET /reef-wave/library`, `/reef-dosing/supplement` | Fixtures. |
 | `GET /firmware/api/<type>/latest` | The firmware the simulated devices of that type run: no update is offered. |
+| `PUT /device/<hwid>` | Stores `name`, `grouped`, `offset`, `in_service` of a device (read back in `/device`). |
+| `POST /device/manage` | `[{hwid, name, in_service, grouped, group_index}]`: every device of the aquarium at once (group and order). |
+| `POST /device/<hwid>/group`, `/ungroup` | Groups / ungroups a device (the ReefWave way). |
+| `PUT /aquarium/<uid>/group/<model>` | `{"properties": {"staggered", "staggered_delay"}}`: staggered sunrise of the lamps of a model, in the aquarium's `properties.groups`. |
+| `POST /aquarium/<uid>/<type>/on`, `/off` | Accepted (every device of a type). |
 
 With the lamps linked to this account, the reef card's program editor lists
 the library, saves new programs and updates or deletes the user's ones,

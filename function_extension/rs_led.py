@@ -31,7 +31,12 @@ with a lamp, besides the generic fixture machinery:
   ``manual`` or ``timer`` mode, the levels last written to ``/manual`` or
   ``/timer``; nothing once ``off``;
 - ``/mode``, ``/acclimation`` and ``/moonphase``: written and mirrored on
-  ``/dashboard``; ``POST /identify``.
+  ``/dashboard``; ``POST /identify``;
+- the staggered sunrise offset of a grouped lamp: ``GET /offset``
+  ``{"offset": <minutes>}``, ``POST /offset`` ``{"offset"}`` replaces it
+  (``{"success": true, "message": "Offset saved"}``, as captured on a lamp),
+  ``DELETE /offset`` sets it back to 0; the lamp then runs its programs that
+  many minutes late.
 
 Simulator-only endpoint, shared with the other devices:
 
@@ -291,6 +296,26 @@ def program_levels(server: Any, weekday: int, minute: int) -> dict[str, float]:
     return levels
 
 
+def offset(server: Any) -> int:
+    """Minutes the lamp runs its programs late (staggered sunrise)."""
+    data = _get(server, "/offset")
+    return int(_num(data.get("offset"))) if isinstance(data, dict) else 0
+
+
+def shifted(weekday: int, minute: int, late: int) -> Tuple[int, int]:
+    """Moment of the week ``late`` minutes before (weekday, minute)."""
+    at = (week_minute(weekday, minute) - late) % MINUTES_PER_WEEK
+    return at // MINUTES_PER_DAY + 1, at % MINUTES_PER_DAY
+
+
+def _write_offset(server: Any, body: Any) -> Response:
+    value = body.get("offset") if isinstance(body, dict) else None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        return 400, {"success": False, "message": "offset expected"}
+    _set(server, "/offset", {"offset": int(value)}, ["GET", "POST", "DELETE"])
+    return 200, {"success": True, "message": "Offset saved"}
+
+
 def acclimation_factor(server: Any) -> float:
     """Share of the light an acclimation in progress lets through."""
     acc = _get(server, "/acclimation")
@@ -334,7 +359,7 @@ def refresh_light(server: Any) -> None:
     if current == "off":
         levels = {"white": 0.0, "blue": 0.0, "moon": 0.0, "intensity": 0.0}
     else:
-        weekday, minute = now()
+        weekday, minute = shifted(*now(), offset(server))
         levels = program_levels(server, weekday, minute)
         factor = acclimation_factor(server)
         for key in ("white", "blue", "intensity"):
@@ -565,12 +590,16 @@ def _handle_post(server: Any, path: str, body: Any) -> Optional[Response]:
         return _write_setting(server, path, body)
     if path == "/identify":
         return 200, {"success": True, "message": "identify started"}
+    if path == "/offset":
+        return _write_offset(server, body)
     return None
 
 
 def _handle_get(server: Any, path: str) -> Optional[Response]:
     if path == "/sim/clock":
         return 200, {"minute": probe_rules.clock()}
+    if path == "/offset":
+        return 200, {"offset": offset(server)}
     # The light follows the program: brought up to date when read, then
     # served by the generic machinery
     if path in ("/manual", "/dashboard"):
@@ -599,6 +628,9 @@ def handle(server: Any, method: str, raw_path: str, body: Any) -> Optional[Respo
         if method in ("POST", "PUT"):
             return _handle_post(server, path, body)
         if method == "DELETE":
+            if path == "/offset":
+                _set(server, "/offset", {"offset": 0}, ["GET", "POST", "DELETE"])
+                return 200, dict(_OK)
             day = _DAY_PATH.match(path)
             if day and day.group(1) == "clouds":
                 return _clear_clouds(server, int(day.group(2)))

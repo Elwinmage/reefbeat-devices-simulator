@@ -20,6 +20,19 @@ server), holding one aquarium and the simulated lamps:
   - ``POST`` adds a program (a new uid/id is given), ``PUT <library>/<uid>``
     updates one, ``DELETE <library>/<uid>`` removes one;
 
+- the groups of devices, as the ReefBeat app keeps them (the app itself
+  writes the same values to each lamp of a group; the account only stores
+  them):
+
+  - ``PUT /device/<hwid>`` ``{name?, grouped?, offset?, in_service?}``;
+  - ``POST /device/manage`` ``[{hwid, name, in_service?, grouped?,
+    group_index}]``, the whole aquarium at once;
+  - ``POST /device/<hwid>/group`` and ``/ungroup`` (ReefWave);
+  - ``PUT /aquarium/<uid>/group/<model>`` ``{"properties": {"staggered",
+    "staggered_delay"}}``: the staggered sunrise of the lamps of a model,
+    in ``/aquarium`` ``properties.groups``;
+  - ``POST /aquarium/<uid>/<type>/on|off``: every device of a type;
+
 - ``/reef-wave/library`` and ``/reef-dosing/supplement``: fixtures;
 - ``GET /firmware/api/<type>/latest``: the firmware the simulated devices
   of that type run (no update offered).
@@ -107,34 +120,130 @@ def devices(server: Any) -> list[dict[str, Any]]:
             continue
         firmware = _data(device, "/firmware") or {}
         wifi = _data(device, "/wifi") or {}
-        out.append(
-            {
-                "id": 900001 + n,
-                "aquarium_id": aq.get("id"),
-                "aquarium_uid": aq.get("uid"),
-                "name": info.get("name"),
-                "hwid": _hwid(device, info),
-                "type": info.get("hw_type"),
-                "model": info.get("hw_model"),
-                "mac": wifi.get("mac", ""),
-                "ssid": wifi.get("ssid", ""),
-                "ip_address": device.config.ip,
-                "firmware_version": firmware.get("version", ""),
-                "board": "esp32",
-                "framework": "i",
-                "hw_revision": info.get("hw_revision", ""),
-                "connected": True,
-                "in_service": True,
-                "grouped": False,
-                "previously_grouped": False,
-                "group_index": 0,
-                "offset": 0,
-                "last_seen": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "onboarding_date": "2025-01-01T00:00:00Z",
-                "properties": {},
-            }
-        )
+        hwid = _hwid(device, info)
+        entry = {
+            "id": 900001 + n,
+            "aquarium_id": aq.get("id"),
+            "aquarium_uid": aq.get("uid"),
+            "name": info.get("name"),
+            "hwid": hwid,
+            "type": info.get("hw_type"),
+            "model": info.get("hw_model"),
+            "mac": wifi.get("mac", ""),
+            "ssid": wifi.get("ssid", ""),
+            "ip_address": device.config.ip,
+            "firmware_version": firmware.get("version", ""),
+            "board": "esp32",
+            "framework": "i",
+            "hw_revision": info.get("hw_revision", ""),
+            "connected": True,
+            "in_service": True,
+            "grouped": False,
+            "previously_grouped": False,
+            "group_index": 0,
+            "offset": 0,
+            "last_seen": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "onboarding_date": "2025-01-01T00:00:00Z",
+            "properties": {},
+        }
+        entry.update(_device_state(server).get(str(hwid), {}))
+        out.append(entry)
     return out
+
+
+# --------------------------------------------------------------------------
+# Groups
+# --------------------------------------------------------------------------
+_STATE = "/sim/device-state"
+# Fields of a device the account keeps when written
+_DEVICE_FIELDS = ("name", "grouped", "group_index", "offset", "in_service", "model")
+
+
+def _device_state(server: Any) -> dict[str, dict[str, Any]]:
+    """What was written to the account's devices, by hwid."""
+    state = _data(server, _STATE)
+    return state if isinstance(state, dict) else {}
+
+
+def update_device(server: Any, hwid: str, body: dict[str, Any]) -> Optional[dict]:
+    """Store written fields of a device; its new entry, None when unknown."""
+    known = {str(d["hwid"]) for d in devices(server)}
+    if hwid not in known:
+        return None
+    state = _device_state(server)
+    fields = state.setdefault(hwid, {})
+    for key in _DEVICE_FIELDS:
+        if key in body:
+            fields[key] = body[key]
+    if "grouped" in fields and fields["grouped"]:
+        fields["previously_grouped"] = True
+    _store(server, _STATE, state)
+    return next(d for d in devices(server) if str(d["hwid"]) == hwid)
+
+
+def _manage(server: Any, body: Any) -> Response:
+    if not isinstance(body, list):
+        return 400, {"message": "device list required"}
+    out = []
+    for item in body:
+        if not isinstance(item, dict) or not item.get("hwid"):
+            return 400, {"message": "hwid required"}
+        device = update_device(server, str(item["hwid"]), item)
+        if device is None:
+            return 404, {"message": f"device {item['hwid']} not found"}
+        out.append(device)
+    return 200, out
+
+
+def set_group(server: Any, aquarium_uid: str, name: str, body: Any) -> Response:
+    """Staggered sunrise of the lamps of a model (aquarium properties)."""
+    aquariums = _data(server, "/aquarium")
+    if not isinstance(aquariums, list):
+        return 404, {"message": "aquarium not found"}
+    aq = next(
+        (a for a in aquariums if isinstance(a, dict) and a.get("uid") == aquarium_uid),
+        None,
+    )
+    props = body.get("properties") if isinstance(body, dict) else None
+    if aq is None:
+        return 404, {"message": "aquarium not found"}
+    if not isinstance(props, dict):
+        return 400, {"message": "properties required"}
+    groups = aq.setdefault("properties", {}).setdefault("groups", [])
+    group = next((g for g in groups if g.get("name") == name), None)
+    if group is None:
+        group = {"name": name, "properties": {}}
+        groups.append(group)
+    for key in ("staggered", "staggered_delay"):
+        if key in props:
+            group["properties"][key] = props[key]
+    _store(server, "/aquarium", aquariums)
+    return 200, group
+
+
+def _group_request(
+    server: Any, method: str, parts: list[str], body: Any
+) -> Optional[Response]:
+    """Group endpoints under /device and /aquarium, None for another path."""
+    if parts[:1] == ["device"]:
+        if method == "POST" and parts == ["device", "manage"]:
+            return _manage(server, body)
+        if len(parts) == 2 and method == "PUT":
+            device = update_device(
+                server, parts[1], body if isinstance(body, dict) else {}
+            )
+            return (200, device) if device else (404, {"message": "not found"})
+        if len(parts) == 3 and method == "POST" and parts[2] in ("group", "ungroup"):
+            device = update_device(server, parts[1], {"grouped": parts[2] == "group"})
+            return (
+                (200, {"success": True}) if device else (404, {"message": "not found"})
+            )
+    if parts[:1] == ["aquarium"] and len(parts) == 4:
+        if method == "PUT" and parts[2] == "group":
+            return set_group(server, parts[1], parts[3], body)
+        if method == "POST" and parts[3] in ("on", "off"):
+            return 200, {"success": True}
+    return None
 
 
 def latest_firmware(server: Any, device_type: str) -> dict[str, Any]:
@@ -275,6 +384,9 @@ def handle(server: Any, method: str, raw_path: str, body: Any) -> Optional[Respo
         library = _split(path)
         if library is not None:
             return _library_request(server, method, library[0], library[1], body)
+        group = _group_request(server, method, path.strip("/").split("/"), body)
+        if group is not None:
+            return group
         if method == "GET":
             if path == "/device":
                 return 200, devices(server)

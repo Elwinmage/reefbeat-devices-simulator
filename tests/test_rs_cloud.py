@@ -158,3 +158,70 @@ def test_over_https(tmp_path: Any) -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_groups(cloud: Any, lamps: list) -> None:
+    """Grouped lamps, their order and the staggered sunrise, as the app keeps them."""
+    devices = call(cloud, "GET", "/device")[1]
+    hwids = {d["model"]: d["hwid"] for d in devices}
+    g1 = hwids["RSLED160"]
+    assert all(not d["grouped"] and d["group_index"] == 0 for d in devices)
+
+    status, device = call(
+        cloud, "PUT", f"/device/{g1}", {"grouped": True, "offset": 10}
+    )
+    assert status == 200
+    assert (device["grouped"], device["offset"], device["previously_grouped"]) == (
+        True,
+        10,
+        True,
+    )
+    assert call(cloud, "PUT", "/device/nope", {"grouped": True})[0] == 404
+
+    manage = [
+        {"hwid": hwids["RSLED90"], "name": "A", "grouped": True, "group_index": 0},
+        {"hwid": g1, "name": "B", "grouped": True, "group_index": 1},
+    ]
+    status, out = call(cloud, "POST", "/device/manage", manage)
+    assert status == 200 and [d["group_index"] for d in out] == [0, 1]
+    listed = {d["hwid"]: d for d in call(cloud, "GET", "/device")[1]}
+    assert listed[g1]["name"] == "B" and listed[g1]["group_index"] == 1
+    assert listed[hwids["RSLED90"]]["grouped"] is True
+    assert call(cloud, "POST", "/device/manage", {})[0] == 400
+    assert call(cloud, "POST", "/device/manage", [{"name": "x"}])[0] == 400
+    assert call(cloud, "POST", "/device/manage", [{"hwid": "nope"}])[0] == 404
+
+    # ReefWave-style group / ungroup
+    assert call(cloud, "POST", f"/device/{g1}/ungroup")[0] == 200
+    assert {d["hwid"]: d for d in call(cloud, "GET", "/device")[1]}[g1][
+        "grouped"
+    ] is False
+    assert call(cloud, "POST", "/device/nope/group")[0] == 404
+
+    # Staggered sunrise of the lamps of a model
+    uid = call(cloud, "GET", "/aquarium")[1][0]["uid"]
+    body = {"properties": {"staggered": True, "staggered_delay": 10}}
+    status, group = call(cloud, "PUT", f"/aquarium/{uid}/group/RSLED160", body)
+    assert status == 200
+    assert group == {
+        "name": "RSLED160",
+        "properties": {"staggered": True, "staggered_delay": 10},
+    }
+    body = {"properties": {"staggered_delay": 5}}
+    call(cloud, "PUT", f"/aquarium/{uid}/group/RSLED160", body)
+    groups = call(cloud, "GET", "/aquarium")[1][0]["properties"]["groups"]
+    assert groups == [
+        {"name": "RSLED160", "properties": {"staggered": True, "staggered_delay": 5}}
+    ]
+    assert call(cloud, "PUT", "/aquarium/nope/group/RSLED160", body)[0] == 404
+    assert call(cloud, "PUT", f"/aquarium/{uid}/group/RSLED160", {})[0] == 400
+    assert call(cloud, "POST", f"/aquarium/{uid}/reef-lights/off")[0] == 200
+    # Other paths are left to the generic machinery
+    assert cloud_fx.handle(cloud, "POST", "/device/x/y/z", {}) is None
+
+
+def test_groups_without_aquarium_list(cloud: Any, lamps: list) -> None:
+    cloud._db["/aquarium"]["data"] = {}
+    assert (
+        call(cloud, "PUT", "/aquarium/x/group/RSLED160", {"properties": {}})[0] == 404
+    )
