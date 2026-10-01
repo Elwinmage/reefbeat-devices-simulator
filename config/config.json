@@ -118,6 +118,14 @@
     },
     {
       "enabled": true,
+      "name": "RSWAVE45",
+      "base_url": "devices/WAVE",
+      "ip": "192.168.0.249",
+      "port": 80,
+      "actions": "config/devices/rs-wave.json"
+    },
+    {
+      "enabled": true,
       "name": "CLOUD",
       "base_url": "devices/CLOUD",
       "ip": "192.168.0.251",

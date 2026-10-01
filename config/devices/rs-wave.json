@@ -1,0 +1,15 @@
+{
+  "type": "RSWAVE",
+  "access": {
+    "no_GET": [],
+    "PUT": [
+      "/device-settings"
+    ],
+    "POST": [
+      "/auto",
+      "/mode"
+    ],
+    "DELETE": []
+  },
+  "post_actions": []
+}

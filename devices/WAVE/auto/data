@@ -1,0 +1,89 @@
+{
+  "uid": "5f0d6c1e-6b7a-4a39-9c1b-2f6b1f0b7a10",
+  "intervals": [
+    {
+      "st": 0,
+      "wave_uid": "8c1d2f3a-1b2c-4d5e-8f90-0a1b2c3d4e01",
+      "name": "Night",
+      "type": "un",
+      "direction": "fw",
+      "frt": 10,
+      "rrt": 10,
+      "fti": 25,
+      "rti": 25,
+      "sn": 3,
+      "pd": 10,
+      "sync": false
+    },
+    {
+      "st": 480,
+      "wave_uid": "8c1d2f3a-1b2c-4d5e-8f90-0a1b2c3d4e02",
+      "name": "Morning",
+      "type": "re",
+      "direction": "alt",
+      "frt": 15,
+      "rrt": 10,
+      "fti": 50,
+      "rti": 40,
+      "sn": 3,
+      "pd": 10,
+      "sync": true
+    },
+    {
+      "st": 720,
+      "wave_uid": "8c1d2f3a-1b2c-4d5e-8f90-0a1b2c3d4e03",
+      "name": "Storm",
+      "type": "ra",
+      "direction": "alt",
+      "frt": 20,
+      "rrt": 15,
+      "fti": 80,
+      "rti": 60,
+      "sn": 3,
+      "pd": 10,
+      "sync": true
+    },
+    {
+      "st": 900,
+      "wave_uid": "8c1d2f3a-1b2c-4d5e-8f90-0a1b2c3d4e04",
+      "name": "Afternoon",
+      "type": "st",
+      "direction": "fw",
+      "frt": 12,
+      "rrt": 12,
+      "fti": 60,
+      "rti": 30,
+      "sn": 5,
+      "pd": 10,
+      "sync": false
+    },
+    {
+      "st": 1140,
+      "wave_uid": "8c1d2f3a-1b2c-4d5e-8f90-0a1b2c3d4e05",
+      "name": "Evening",
+      "type": "su",
+      "direction": "rw",
+      "frt": 10,
+      "rrt": 10,
+      "fti": 40,
+      "rti": 45,
+      "sn": 3,
+      "pd": 8,
+      "sync": false
+    },
+    {
+      "st": 1320,
+      "wave_uid": "2e7819eb-87d2-43b7-ac91-4af1de6dc505",
+      "name": "No Wave",
+      "type": "nw",
+      "direction": "fw",
+      "frt": 0,
+      "rrt": 0,
+      "fti": 0,
+      "rti": 0,
+      "sn": 0,
+      "pd": 0,
+      "sync": false
+    }
+  ]
+}
