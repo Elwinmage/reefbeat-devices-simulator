@@ -30,8 +30,20 @@ with a lamp, besides the generic fixture machinery:
   midnight), dimmed while a cloud passes and during an acclimation; in
   ``manual`` or ``timer`` mode, the levels last written to ``/manual`` or
   ``/timer``; nothing once ``off``;
-- ``/mode``, ``/acclimation`` and ``/moonphase``: written and mirrored on
-  ``/dashboard``; ``POST /identify``;
+- ``/mode``: written and mirrored on ``/dashboard``; ``POST /identify``;
+- the acclimation (``POST /acclimation`` ``{enabled, duration,
+  start_intensity_factor}``): once enabled the light starts at
+  ``start_intensity_factor`` % and goes back to 100 % over ``duration``
+  days, in equal daily steps; ``started_on``, ``remaining_days`` and
+  ``current_intensity_factor`` follow, and it turns itself off when done
+  (``started_on`` back to ``"never"``);
+- the moon phase (``POST /moonphase`` ``{enabled}`` and/or
+  ``{"moon_day": <1-28>}``): a cycle of 28 days, new moon on day 1, full
+  moon on day 14; ``todays_moon_day`` moves on by one each day from the
+  day last set, ``intensity`` is the share of the full moon (0 on day 28,
+  100 on day 14), with ``name``, ``next_full_moon`` and ``next_new_moon``;
+  while enabled, the moon channel of the programs is dimmed to that share;
+  both are mirrored on ``/dashboard``;
 - the staggered sunrise offset of a grouped lamp: ``GET /offset``
   ``{"offset": <minutes>}``, ``POST /offset`` ``{"offset"}`` replaces it
   (``{"success": true, "message": "Offset saved"}``, as captured on a lamp),
@@ -41,14 +53,17 @@ with a lamp, besides the generic fixture machinery:
 Simulator-only endpoint, shared with the other devices:
 
 - ``GET|PUT /sim/clock``: ``{"minute": <0-1439>}`` pins the clock of every
-  simulated device; ``{"minute": null}`` goes back to the real time.
+  simulated device; ``{"minute": null}`` goes back to the real time. On a
+  lamp, ``{"days": <n>}`` also moves the lamps' calendar ``n`` days ahead
+  (to watch an acclimation or the moon go by); ``{"days": 0}`` goes back
+  to today.
 """
 
 from __future__ import annotations
 
 import copy
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Optional, Tuple
 
 from . import probe_rules, registry
@@ -125,13 +140,32 @@ def _dashboard_merge(server: Any, key: str, value: Any) -> None:
 # --------------------------------------------------------------------------
 # Clock
 # --------------------------------------------------------------------------
+# Days the lamps' calendar is moved ahead (``/sim/clock`` ``days``)
+_CALENDAR: dict[str, int] = {"days": 0}
+
+
+def set_days(days: int) -> None:
+    """Move the lamps' calendar ``days`` ahead of the real one (0: today)."""
+    _CALENDAR["days"] = int(days)
+
+
+def moment() -> datetime:
+    """Date and time of the lamps' calendar."""
+    return datetime.now() + timedelta(days=_CALENDAR["days"])
+
+
+def today() -> int:
+    """Day of the lamps' calendar (proleptic ordinal)."""
+    return moment().toordinal()
+
+
 def now() -> Tuple[int, int]:
     """ISO weekday and minute of the day of the lamps' clock.
 
     The minute follows the virtual clock shared with the other devices when
     one is pinned (``/sim/clock``), the local time otherwise.
     """
-    return datetime.now().isoweekday(), probe_rules.minutes_now()
+    return moment().isoweekday(), probe_rules.minutes_now()
 
 
 def week_minute(weekday: int, minute: int) -> int:
@@ -316,12 +350,196 @@ def _write_offset(server: Any, body: Any) -> Response:
     return 200, {"success": True, "message": "Offset saved"}
 
 
+# --------------------------------------------------------------------------
+# Acclimation
+# --------------------------------------------------------------------------
+NEVER = "never"
+
+
+def _day_of(epoch: Any) -> Optional[int]:
+    """Day (ordinal) of a ``started_on`` timestamp, None for "never"."""
+    if isinstance(epoch, bool) or not isinstance(epoch, (int, float)):
+        return None
+    return datetime.fromtimestamp(epoch).toordinal()
+
+
+def acclimation_state(acc: dict[str, Any], day: int) -> dict[str, Any]:
+    """An acclimation as the lamp reports it on a day.
+
+    From ``start_intensity_factor`` % on the day it started to 100 % after
+    ``duration`` days, in equal daily steps; over, it turns itself off.
+    """
+    duration = max(1, int(_num(acc.get("duration"), 1)))
+    start = max(0.0, min(100.0, _num(acc.get("start_intensity_factor"), 100)))
+    started = _day_of(acc.get("started_on"))
+    elapsed = 0 if started is None else max(0, day - started)
+    if not acc.get("enabled") or started is None or elapsed >= duration:
+        return {
+            **acc,
+            "enabled": False,
+            "started_on": NEVER,
+            "remaining_days": 0,
+            "current_intensity_factor": 100,
+        }
+    return {
+        **acc,
+        "remaining_days": duration - elapsed,
+        "current_intensity_factor": int(
+            round(start + (100 - start) * elapsed / duration)
+        ),
+    }
+
+
+def refresh_acclimation(server: Any) -> None:
+    """Bring ``/acclimation`` (and the dashboard) to today."""
+    acc = _get(server, "/acclimation")
+    if isinstance(acc, dict):
+        state = acclimation_state(acc, today())
+        _set(server, "/acclimation", state)
+        _dashboard_merge(server, "acclimation", state)
+
+
 def acclimation_factor(server: Any) -> float:
     """Share of the light an acclimation in progress lets through."""
     acc = _get(server, "/acclimation")
     if not isinstance(acc, dict) or not acc.get("enabled"):
         return 1.0
     return max(0.0, min(100.0, _num(acc.get("current_intensity_factor"), 100))) / 100
+
+
+def _write_acclimation(server: Any, body: Any) -> Response:
+    """``{enabled, duration, start_intensity_factor}``, each optional."""
+    if not isinstance(body, dict):
+        return 400, {"success": False, "message": "settings expected"}
+    enabled = body.get("enabled")
+    if enabled is not None and not isinstance(enabled, bool):
+        return 400, {"success": False, "message": "enabled: boolean expected"}
+    for key, low, high in (("duration", 1, 365), ("start_intensity_factor", 0, 100)):
+        value = body.get(key)
+        if value is not None and (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not low <= value <= high
+        ):
+            return 400, {"success": False, "message": "%s: %d-%d" % (key, low, high)}
+    current = _get(server, "/acclimation")
+    current = dict(current) if isinstance(current, dict) else {}
+    was_running = bool(current.get("enabled"))
+    for key in ("enabled", "duration", "start_intensity_factor"):
+        if body.get(key) is not None:
+            current[key] = body[key]
+    # Starting (not a setting changed while it runs): from today
+    if current.get("enabled") and not was_running:
+        current["started_on"] = int(moment().timestamp())
+    _set(server, "/acclimation", current, ["GET", "POST"])
+    refresh_acclimation(server)
+    return 200, dict(_OK)
+
+
+# --------------------------------------------------------------------------
+# Moon phase
+# --------------------------------------------------------------------------
+MOON_CYCLE = 28
+NEW_MOON_DAY = 1
+FULL_MOON_DAY = 14
+
+# Name of the phase, by the last day it covers
+MOON_NAMES = (
+    (1, "New Moon"),
+    (6, "Waxing Crescent"),
+    (7, "First Quarter"),
+    (13, "Waxing Gibbous"),
+    (14, "Full Moon"),
+    (20, "Waning Gibbous"),
+    (21, "Last Quarter"),
+    (28, "Waning Crescent"),
+)
+
+
+def moon_intensity(moon_day: int) -> int:
+    """Share (%) of the full moon on a day of the cycle: 100 on day 14,
+    0 on day 28, as the lamps report it (14 on day 2)."""
+    if moon_day <= FULL_MOON_DAY:
+        return int(round(100 * moon_day / FULL_MOON_DAY))
+    return int(round(100 * (MOON_CYCLE - moon_day) / (MOON_CYCLE - FULL_MOON_DAY)))
+
+
+def moon_name(moon_day: int) -> str:
+    """Name of the phase on a day of the cycle."""
+    return next(name for last, name in MOON_NAMES if moon_day <= last)
+
+
+def _moon_anchor(server: Any, moon: dict[str, Any]) -> Tuple[int, int]:
+    """(day, moon day that day): where the lamp's cycle is counted from.
+
+    A lamp starts from the moon day of its fixture, taken as today's.
+    """
+    anchor = getattr(server, "_moon_anchor", None)
+    if anchor is None:
+        first = int(_num(moon.get("todays_moon_day"), NEW_MOON_DAY))
+        anchor = (today(), min(MOON_CYCLE, max(1, first)))
+        server._moon_anchor = anchor
+    return anchor
+
+
+def moon_state(moon: dict[str, Any], anchor: Tuple[int, int], day: int) -> dict:
+    """The moon phase as the lamp reports it on a day."""
+    moon_day = (anchor[1] - 1 + day - anchor[0]) % MOON_CYCLE + 1
+    return {
+        **moon,
+        "todays_moon_day": moon_day,
+        "intensity": moon_intensity(moon_day),
+        "name": moon_name(moon_day),
+        "next_full_moon": (FULL_MOON_DAY - moon_day) % MOON_CYCLE,
+        "next_new_moon": (NEW_MOON_DAY - moon_day) % MOON_CYCLE,
+    }
+
+
+def refresh_moon(server: Any) -> None:
+    """Bring ``/moonphase`` (and the dashboard) to today."""
+    moon = _get(server, "/moonphase")
+    if isinstance(moon, dict):
+        state = moon_state(moon, _moon_anchor(server, moon), today())
+        _set(server, "/moonphase", state)
+        _dashboard_merge(server, "moon_phase", state)
+
+
+def moon_factor(server: Any) -> float:
+    """Share of the programs' moon light the moon phase lets through."""
+    moon = _get(server, "/moonphase")
+    if not isinstance(moon, dict) or not moon.get("enabled"):
+        return 1.0
+    return max(0.0, min(100.0, _num(moon.get("intensity"), 100))) / 100
+
+
+def _write_moon(server: Any, body: Any) -> Response:
+    """``{enabled}`` and/or ``{moon_day}`` (today's day of the cycle)."""
+    if not isinstance(body, dict):
+        return 400, {"success": False, "message": "settings expected"}
+    enabled = body.get("enabled")
+    if enabled is not None and not isinstance(enabled, bool):
+        return 400, {"success": False, "message": "enabled: boolean expected"}
+    moon_day = body.get("moon_day")
+    if moon_day is not None and (
+        isinstance(moon_day, bool)
+        or not isinstance(moon_day, int)
+        or not 1 <= moon_day <= MOON_CYCLE
+    ):
+        return 400, {"success": False, "message": "moon_day: 1-%d" % MOON_CYCLE}
+    current = _get(server, "/moonphase")
+    current = dict(current) if isinstance(current, dict) else {}
+    _moon_anchor(server, current)
+    restart = moon_day is not None
+    if moon_day is not None:
+        server._moon_anchor = (today(), moon_day)
+    if enabled is not None:
+        restart = restart or (enabled and not current.get("enabled"))
+        current["enabled"] = enabled
+    if restart:
+        current["started_on"] = int(moment().timestamp())
+    _set(server, "/moonphase", current, ["GET", "POST"])
+    refresh_moon(server)
+    return 200, dict(_OK)
 
 
 def mode(server: Any) -> str:
@@ -361,9 +579,12 @@ def refresh_light(server: Any) -> None:
     else:
         weekday, minute = shifted(*now(), offset(server))
         levels = program_levels(server, weekday, minute)
+        refresh_acclimation(server)
+        refresh_moon(server)
         factor = acclimation_factor(server)
         for key in ("white", "blue", "intensity"):
             levels[key] *= factor
+        levels["moon"] *= moon_factor(server)
         if "kelvin" in manual:
             manual["kelvin"] = int(levels["kelvin"])
     for key in ("white", "blue", "moon"):
@@ -547,18 +768,6 @@ def _set_mode(server: Any, value: str) -> None:
         _set(server, "/dashboard", {**dash, "mode": value})
 
 
-def _write_setting(server: Any, path: str, body: Any) -> Response:
-    """/acclimation and /moonphase: stored, and mirrored on the dashboard."""
-    if not isinstance(body, dict):
-        return 400, {"success": False, "message": "settings expected"}
-    _merge(server, path, body)
-    if _get(server, path) is None:
-        _set(server, path, dict(body))
-    key = "acclimation" if path == "/acclimation" else "moon_phase"
-    _dashboard_merge(server, key, body)
-    return 200, dict(_OK)
-
-
 def _handle_post(server: Any, path: str, body: Any) -> Optional[Response]:
     day = _DAY_PATH.match(path)
     if day:
@@ -586,8 +795,10 @@ def _handle_post(server: Any, path: str, body: Any) -> Optional[Response]:
             return 400, {"success": False, "message": "mode expected"}
         _set_mode(server, value)
         return 200, dict(_OK)
-    if path in ("/acclimation", "/moonphase"):
-        return _write_setting(server, path, body)
+    if path == "/acclimation":
+        return _write_acclimation(server, body)
+    if path == "/moonphase":
+        return _write_moon(server, body)
     if path == "/identify":
         return 200, {"success": True, "message": "identify started"}
     if path == "/offset":
@@ -595,11 +806,19 @@ def _handle_post(server: Any, path: str, body: Any) -> Optional[Response]:
     return None
 
 
+def _sim_clock() -> dict[str, Any]:
+    return {"minute": probe_rules.clock(), "days": _CALENDAR["days"]}
+
+
 def _handle_get(server: Any, path: str) -> Optional[Response]:
     if path == "/sim/clock":
-        return 200, {"minute": probe_rules.clock()}
+        return 200, _sim_clock()
     if path == "/offset":
         return 200, {"offset": offset(server)}
+    # The acclimation and the moon move on with the days
+    if path in ("/acclimation", "/moonphase", "/dashboard"):
+        refresh_acclimation(server)
+        refresh_moon(server)
     # The light follows the program: brought up to date when read, then
     # served by the generic machinery
     if path in ("/manual", "/dashboard"):
@@ -622,9 +841,14 @@ def handle(server: Any, method: str, raw_path: str, body: Any) -> Optional[Respo
         if method == "GET":
             return _handle_get(server, path)
         if method == "PUT" and path == "/sim/clock":
-            minute = body.get("minute") if isinstance(body, dict) else None
-            probe_rules.set_clock(None if minute is None else int(minute))
-            return 200, {"minute": probe_rules.clock()}
+            body = body if isinstance(body, dict) else {}
+            # "days" alone leaves the minute as it is
+            if "minute" in body or "days" not in body:
+                minute = body.get("minute")
+                probe_rules.set_clock(None if minute is None else int(minute))
+            if "days" in body:
+                set_days(int(_num(body.get("days"))))
+            return 200, _sim_clock()
         if method in ("POST", "PUT"):
             return _handle_post(server, path, body)
         if method == "DELETE":

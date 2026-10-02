@@ -71,6 +71,7 @@ def test_clouds_dim_the_light(g1: Any, monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_moon_runs_past_midnight(g1: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     # Monday's moon: 22:25 to 01:23 on Tuesday, full from 23:40 to 00:10
+    call(g1, "POST", "/moonphase", {"enabled": False})  # the program as it is
     at(monkeypatch, 2, "00:00")
     assert manual(g1)["moon"] == 10
     at(monkeypatch, 2, "00:30")
@@ -199,19 +200,159 @@ def test_modes(g2: Any, g1_90: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     assert "/dashboard" not in g1_90._db
 
 
-def test_settings_mirrored_on_the_dashboard(
-    g1: Any, monkeypatch: pytest.MonkeyPatch
+@pytest.fixture
+def calendar() -> Any:
+    """Move the lamps' calendar, back to today afterwards."""
+    yield led.set_days
+    led.set_days(0)
+
+
+def test_acclimation_runs_over_its_days(
+    g1: Any, monkeypatch: pytest.MonkeyPatch, calendar: Any
 ) -> None:
-    body = {"enabled": True, "duration": 30, "current_intensity_factor": 50}
-    assert call(g1, "POST", "/acclimation", body)[0] == 200
-    assert g1.get_data("/acclimation")["duration"] == 30
-    assert g1.get_data("/dashboard")["acclimation"]["current_intensity_factor"] == 50
-    at(monkeypatch, 2, "12:00")
+    at(monkeypatch, 2, "12:00")  # blue at 100 without acclimation
+    assert manual(g1)["blue"] == 100
+    body = {"enabled": True, "duration": 10, "start_intensity_factor": 50}
+    assert call(g1, "POST", "/acclimation", body) == (200, {"success": True})
+    acc = g1.get_data("/acclimation")
+    assert isinstance(acc["started_on"], int)
+    assert (acc["remaining_days"], acc["current_intensity_factor"]) == (10, 50)
+    assert g1.get_data("/dashboard")["acclimation"] == acc
     assert manual(g1)["blue"] == 50
+    # Day after day, in equal steps; read on any of the endpoints
+    calendar(4)
+    call(g1, "GET", "/acclimation")
+    acc = g1.get_data("/acclimation")
+    assert (acc["remaining_days"], acc["current_intensity_factor"]) == (6, 70)
+    assert manual(g1)["blue"] == 70
+    # A setting changed while it runs does not start it again
+    started = acc["started_on"]
+    call(g1, "POST", "/acclimation", {"enabled": True, "duration": 8})
+    acc = g1.get_data("/acclimation")
+    assert (acc["started_on"], acc["remaining_days"]) == (started, 4)
+    assert acc["current_intensity_factor"] == 75
+    # Over: it turns itself off
+    calendar(8)
+    call(g1, "GET", "/dashboard")
+    acc = g1.get_data("/dashboard")["acclimation"]
+    assert (acc["enabled"], acc["started_on"]) == (False, "never")
+    assert (acc["remaining_days"], acc["current_intensity_factor"]) == (0, 100)
+    assert acc["duration"] == 8 and acc["start_intensity_factor"] == 50
+    assert manual(g1)["blue"] == 100
+    # Stopped by hand
+    calendar(0)
+    call(g1, "POST", "/acclimation", {"enabled": True})
+    assert g1.get_data("/acclimation")["current_intensity_factor"] == 50
+    call(g1, "POST", "/acclimation", {"enabled": False})
+    assert g1.get_data("/acclimation")["started_on"] == "never"
+    assert led.acclimation_factor(g1) == 1.0
+
+
+def test_acclimation_bad_requests_and_fixtures(g1: Any, g1_90: Any) -> None:
+    for body in (
+        "x",
+        {"enabled": "yes"},
+        {"duration": 0},
+        {"duration": True},
+        {"start_intensity_factor": 101},
+        {"start_intensity_factor": "50"},
+    ):
+        assert call(g1, "POST", "/acclimation", body)[0] == 400
+    assert g1.get_data("/acclimation")["enabled"] is False
+    # A lamp without dashboard, or without the endpoint
+    assert call(g1_90, "POST", "/acclimation", {"enabled": True})[0] == 200
+    del g1._db["/acclimation"]
+    led.refresh_acclimation(g1)
+    assert led.acclimation_factor(g1) == 1.0
+    assert call(g1, "POST", "/acclimation", {"enabled": True, "duration": 5})[0] == 200
+    assert g1.get_data("/acclimation")["remaining_days"] == 5
+    # An acclimation enabled without a start (odd fixture): not running
+    state = led.acclimation_state({"enabled": True, "started_on": "never"}, 1)
+    assert (state["enabled"], state["current_intensity_factor"]) == (False, 100)
+
+
+def test_moon_phase_cycle() -> None:
+    # As captured on lamps: day 2 -> 14 %, day 28 -> 0 %
+    assert [led.moon_intensity(d) for d in (1, 2, 7, 14, 21, 28)] == [
+        7,
+        14,
+        50,
+        100,
+        50,
+        0,
+    ]
+    assert [led.moon_name(d) for d in (1, 2, 7, 13, 14, 15, 21, 28)] == [
+        "New Moon",
+        "Waxing Crescent",
+        "First Quarter",
+        "Waxing Gibbous",
+        "Full Moon",
+        "Waning Gibbous",
+        "Last Quarter",
+        "Waning Crescent",
+    ]
+    # The fixtures: (day 2: full in 12, new in 27), (day 28: 14 and 1)
+    state = led.moon_state({}, (100, 2), 100)
+    assert (state["next_full_moon"], state["next_new_moon"]) == (12, 27)
+    state = led.moon_state({}, (100, 2), 126)
+    assert (state["todays_moon_day"], state["intensity"]) == (28, 0)
+    assert (state["next_full_moon"], state["next_new_moon"]) == (14, 1)
+    assert led.moon_state({}, (100, 2), 127)["todays_moon_day"] == 1
+
+
+def test_moon_phase_dims_the_moon(
+    g1: Any, monkeypatch: pytest.MonkeyPatch, calendar: Any
+) -> None:
+    at(monkeypatch, 2, "00:00")  # Monday's moon, at 10 in the program
+    # The fixture: day 2 of the cycle, 14 % of the full moon
+    moon = manual(g1)
+    assert (moon["moon"], moon["moon_full"]) == (1, 1.4)
+    assert g1.get_data("/moonphase")["todays_moon_day"] == 2
+    # Today set as the full moon
+    assert call(g1, "POST", "/moonphase", {"moon_day": 14})[0] == 200
+    phase = g1.get_data("/moonphase")
+    assert (phase["todays_moon_day"], phase["intensity"]) == (14, 100)
+    assert (phase["name"], phase["next_full_moon"]) == ("Full Moon", 0)
+    assert "moon_day" not in phase and phase["started_on"] > 1758491094
+    assert g1.get_data("/dashboard")["moon_phase"] == phase
+    assert manual(g1)["moon"] == 10
+    # A week later: last quarter
+    calendar(7)
+    call(g1, "GET", "/moonphase")
+    phase = g1.get_data("/moonphase")
+    assert (phase["todays_moon_day"], phase["intensity"]) == (21, 50)
+    assert manual(g1)["moon"] == 5
+    # Disabled: the moon of the program as it is, the cycle goes on
+    started = phase["started_on"]
     call(g1, "POST", "/moonphase", {"enabled": False})
     assert g1.get_data("/dashboard")["moon_phase"]["enabled"] is False
-    assert call(g1, "POST", "/moonphase", "x")[0] == 400
+    assert manual(g1)["moon"] == 10
+    assert g1.get_data("/moonphase")["started_on"] == started
+    # Enabled again: started now, same day of the cycle
+    call(g1, "POST", "/moonphase", {"enabled": True})
+    phase = g1.get_data("/moonphase")
+    assert phase["started_on"] > started and phase["todays_moon_day"] == 21
+    call(g1, "POST", "/moonphase", {"enabled": True})
+    assert g1.get_data("/moonphase")["started_on"] == phase["started_on"]
+
+
+def test_moon_phase_bad_requests_and_fixtures(g1: Any) -> None:
+    for body in (
+        "x",
+        {"enabled": 1},
+        {"moon_day": 0},
+        {"moon_day": 29},
+        {"moon_day": True},
+        {"moon_day": 2.5},
+    ):
+        assert call(g1, "POST", "/moonphase", body)[0] == 400
     assert call(g1, "POST", "/identify", {})[0] == 200
+    # A lamp without the endpoint
+    del g1._db["/moonphase"]
+    led.refresh_moon(g1)
+    assert led.moon_factor(g1) == 1.0
+    assert call(g1, "POST", "/moonphase", {"enabled": True})[0] == 200
+    assert g1.get_data("/moonphase")["todays_moon_day"] == 1
 
 
 def test_bad_requests_and_other_devices(g1: Any) -> None:
@@ -226,13 +367,24 @@ def test_bad_requests_and_other_devices(g1: Any) -> None:
 
 
 def test_clock(g1: Any) -> None:
+    clock = {"minute": 725, "days": 0}
     try:
-        assert call(g1, "PUT", "/sim/clock", {"minute": 725}) == (200, {"minute": 725})
-        assert call(g1, "GET", "/sim/clock") == (200, {"minute": 725})
+        assert call(g1, "PUT", "/sim/clock", {"minute": 725}) == (200, clock)
+        assert call(g1, "GET", "/sim/clock") == (200, clock)
         assert led.now()[1] == 725
+        # The lamps' calendar, moved without touching the minute
+        today = led.today()
+        moved = {"minute": 725, "days": 3}
+        assert call(g1, "PUT", "/sim/clock", {"days": 3}) == (200, moved)
+        assert led.today() == today + 3
+        assert call(g1, "PUT", "/sim/clock", {"minute": 10, "days": 0})[1] == {
+            "minute": 10,
+            "days": 0,
+        }
     finally:
-        call(g1, "PUT", "/sim/clock", {"minute": None})
-    assert call(g1, "GET", "/sim/clock") == (200, {"minute": None})
+        call(g1, "PUT", "/sim/clock", {"minute": None, "days": 0})
+    assert call(g1, "GET", "/sim/clock") == (200, {"minute": None, "days": 0})
+    assert call(g1, "PUT", "/sim/clock", None)[1] == {"minute": None, "days": 0}
 
 
 def test_level_helpers() -> None:

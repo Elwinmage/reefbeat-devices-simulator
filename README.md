@@ -261,15 +261,33 @@ LED of the integration can group them:
   derived from them. The dashboard's `current_program` shows today's name;
 - `POST /manual` (white/blue/moon, or kelvin/intensity on a G2) and
   `POST /timer` set the levels by hand and the mode; `POST /mode`;
-  `POST /acclimation` and `/moonphase` are mirrored on the dashboard;
   `POST /identify`;
+- acclimation: `POST /acclimation` `{enabled, duration,
+  start_intensity_factor}` (each optional). Once enabled, the light starts
+  at `start_intensity_factor` % and goes back to 100 % over `duration`
+  days, in equal daily steps: `started_on` (timestamp), `remaining_days`
+  and `current_intensity_factor` follow, and white/blue (or the G2
+  intensity) are dimmed accordingly. Over, it turns itself off
+  (`started_on` back to `"never"`). A setting changed while it runs does
+  not start it again;
+- moon phase: `POST /moonphase` `{enabled}` and/or `{"moon_day": 1-28}`
+  (today's day of the cycle). A cycle of 28 days, new moon on day 1, full
+  moon on day 14: `todays_moon_day` moves on by one each day,
+  `intensity` is the share of the full moon (day 2: 14 %, day 14: 100 %,
+  day 28: 0 %, as real lamps report it), with `name`, `next_full_moon` and
+  `next_new_moon`. While enabled, the moon channel of the programs is
+  dimmed to that share (a program moon of 10 gives 1.4 on day 2); disabled,
+  the program's moon is played as it is. A lamp starts on the moon day of
+  its fixture. Both are mirrored on the dashboard;
 - staggered sunrise of a grouped lamp: `GET /offset` `{"offset": <minutes>}`,
   `POST /offset` `{"offset"}` replaces it (`{"success": true, "message":
   "Offset saved"}`, as a real lamp answers), `DELETE /offset` sets it back
   to 0. The lamp then plays its programs that many minutes late.
 
 The lamps follow the clock of `/sim/clock`, like the schedules of the other
-devices: pin it to watch a program play at any time of day.
+devices: pin it to watch a program play at any time of day. On a lamp,
+`PUT /sim/clock` `{"days": <n>}` also moves the lamps' calendar `n` days
+ahead, to watch an acclimation or the moon go by (`{"days": 0}`: today).
 
 ### Cloud Account
 
@@ -319,7 +337,7 @@ Endpoints that exist only in the simulator, to play a scenario:
 | `PUT /sim/probe?type=<t>&uid=<u>` | Set what a hub probe measures: `value`, `temp`, `water_level`, `leak_status`, `ppt`, `sg`; or unplug / plug it: `status` `disconnected` / `connected`. Raw values: offsets still apply. |
 | `PUT /sim/buzzer` | `{"dismissed": true}`, as when the hub button is pressed. |
 | `GET /sim/probes` (hub) | Raw readings of every hub probe, before offsets: what a scenario reads back and restores. |
-| `GET\|PUT /sim/clock` (hub, strip or lamp) | `{"minute": 0-1439}` pins the clock the schedules follow, for every simulated device of the process; `{"minute": null}` goes back to the real time. |
+| `GET\|PUT /sim/clock` (hub, strip or lamp) | `{"minute": 0-1439}` pins the clock the schedules follow, for every simulated device of the process; `{"minute": null}` goes back to the real time. A lamp also takes `{"days": <n>}` (its calendar moved `n` days ahead, for the acclimation and the moon) and reports it. |
 | `PUT /sim/watts` (hub or strip) | `{"watts": {"<n>": W}}`: what 12V port / socket `n` (0-based) draws while powered, reported as its `consumption`; `{}` stops it. |
 | `GET\|PUT /sim/temperature` (strip) | `{"value": °C}`: what the strip's local probe measures, before its offset. |
 
