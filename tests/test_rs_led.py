@@ -212,10 +212,11 @@ def test_acclimation_runs_over_its_days(
 ) -> None:
     at(monkeypatch, 2, "12:00")  # blue at 100 without acclimation
     assert manual(g1)["blue"] == 100
-    body = {"enabled": True, "duration": 10, "start_intensity_factor": 50}
+    # As the integration and the app start it: its settings only
+    body = {"duration": 10, "start_intensity_factor": 50}
     assert call(g1, "POST", "/acclimation", body) == (200, {"success": True})
     acc = g1.get_data("/acclimation")
-    assert isinstance(acc["started_on"], int)
+    assert acc["enabled"] is True and isinstance(acc["started_on"], int)
     assert (acc["remaining_days"], acc["current_intensity_factor"]) == (10, 50)
     assert g1.get_data("/dashboard")["acclimation"] == acc
     assert manual(g1)["blue"] == 50
@@ -225,14 +226,17 @@ def test_acclimation_runs_over_its_days(
     acc = g1.get_data("/acclimation")
     assert (acc["remaining_days"], acc["current_intensity_factor"]) == (6, 70)
     assert manual(g1)["blue"] == 70
-    # A setting changed while it runs does not start it again
+    # Written again: started again, from that day
     started = acc["started_on"]
-    call(g1, "POST", "/acclimation", {"enabled": True, "duration": 8})
+    call(g1, "POST", "/acclimation", {"duration": 8})
     acc = g1.get_data("/acclimation")
-    assert (acc["started_on"], acc["remaining_days"]) == (started, 4)
-    assert acc["current_intensity_factor"] == 75
-    # Over: it turns itself off
+    assert acc["started_on"] > started
+    assert (acc["remaining_days"], acc["current_intensity_factor"]) == (8, 50)
     calendar(8)
+    call(g1, "GET", "/acclimation")
+    assert g1.get_data("/acclimation")["current_intensity_factor"] == 75
+    # Over: it turns itself off
+    calendar(12)
     call(g1, "GET", "/dashboard")
     acc = g1.get_data("/dashboard")["acclimation"]
     assert (acc["enabled"], acc["started_on"]) == (False, "never")
@@ -241,10 +245,12 @@ def test_acclimation_runs_over_its_days(
     assert manual(g1)["blue"] == 100
     # Stopped by hand
     calendar(0)
-    call(g1, "POST", "/acclimation", {"enabled": True})
+    call(g1, "POST", "/acclimation", {})
     assert g1.get_data("/acclimation")["current_intensity_factor"] == 50
-    call(g1, "POST", "/acclimation", {"enabled": False})
-    assert g1.get_data("/acclimation")["started_on"] == "never"
+    assert call(g1, "DELETE", "/acclimation") == (200, {"success": True})
+    acc = g1.get_data("/acclimation")
+    assert (acc["enabled"], acc["started_on"]) == (False, "never")
+    assert g1.get_data("/dashboard")["acclimation"] == acc
     assert led.acclimation_factor(g1) == 1.0
 
 
@@ -260,7 +266,7 @@ def test_acclimation_bad_requests_and_fixtures(g1: Any, g1_90: Any) -> None:
         assert call(g1, "POST", "/acclimation", body)[0] == 400
     assert g1.get_data("/acclimation")["enabled"] is False
     # A lamp without dashboard, or without the endpoint
-    assert call(g1_90, "POST", "/acclimation", {"enabled": True})[0] == 200
+    assert call(g1_90, "POST", "/acclimation", {"duration": 3})[0] == 200
     del g1._db["/acclimation"]
     led.refresh_acclimation(g1)
     assert led.acclimation_factor(g1) == 1.0
@@ -322,15 +328,16 @@ def test_moon_phase_dims_the_moon(
     phase = g1.get_data("/moonphase")
     assert (phase["todays_moon_day"], phase["intensity"]) == (21, 50)
     assert manual(g1)["moon"] == 5
-    # Disabled: the moon of the program as it is, the cycle goes on
+    # Turned off: the moon of the program as it is, the cycle goes on
     started = phase["started_on"]
-    call(g1, "POST", "/moonphase", {"enabled": False})
+    assert call(g1, "DELETE", "/moonphase") == (200, {"success": True})
     assert g1.get_data("/dashboard")["moon_phase"]["enabled"] is False
     assert manual(g1)["moon"] == 10
     assert g1.get_data("/moonphase")["started_on"] == started
-    # Enabled again: started now, same day of the cycle
-    call(g1, "POST", "/moonphase", {"enabled": True})
+    # On again (a write without a day): started now, same day of the cycle
+    call(g1, "POST", "/moonphase", {})
     phase = g1.get_data("/moonphase")
+    assert phase["enabled"] is True
     assert phase["started_on"] > started and phase["todays_moon_day"] == 21
     call(g1, "POST", "/moonphase", {"enabled": True})
     assert g1.get_data("/moonphase")["started_on"] == phase["started_on"]

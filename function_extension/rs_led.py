@@ -31,14 +31,17 @@ with a lamp, besides the generic fixture machinery:
   ``manual`` or ``timer`` mode, the levels last written to ``/manual`` or
   ``/timer``; nothing once ``off``;
 - ``/mode``: written and mirrored on ``/dashboard``; ``POST /identify``;
-- the acclimation (``POST /acclimation`` ``{enabled, duration,
-  start_intensity_factor}``): once enabled the light starts at
+- the acclimation: ``POST /acclimation`` ``{duration,
+  start_intensity_factor}`` starts it from today (``enabled`` true,
+  ``remaining_days`` at ``duration``), ``DELETE /acclimation`` stops it,
+  as the integration and the app do; the light starts at
   ``start_intensity_factor`` % and goes back to 100 % over ``duration``
   days, in equal daily steps; ``started_on``, ``remaining_days`` and
   ``current_intensity_factor`` follow, and it turns itself off when done
   (``started_on`` back to ``"never"``);
-- the moon phase (``POST /moonphase`` ``{enabled}`` and/or
-  ``{"moon_day": <1-28>}``): a cycle of 28 days, new moon on day 1, full
+- the moon phase: ``POST /moonphase`` ``{"moon_day": <1-28>}`` turns it on
+  (and sets today's day of the cycle), ``DELETE /moonphase`` turns it off;
+  a cycle of 28 days, new moon on day 1, full
   moon on day 14; ``todays_moon_day`` moves on by one each day from the
   day last set, ``intensity`` is the share of the full moon (0 on day 28,
   100 on day 14), with ``name``, ``next_full_moon`` and ``next_new_moon``;
@@ -408,7 +411,7 @@ def acclimation_factor(server: Any) -> float:
 
 
 def _write_acclimation(server: Any, body: Any) -> Response:
-    """``{enabled, duration, start_intensity_factor}``, each optional."""
+    """``{duration, start_intensity_factor}``, each optional: starts it."""
     if not isinstance(body, dict):
         return 400, {"success": False, "message": "settings expected"}
     enabled = body.get("enabled")
@@ -424,12 +427,14 @@ def _write_acclimation(server: Any, body: Any) -> Response:
             return 400, {"success": False, "message": "%s: %d-%d" % (key, low, high)}
     current = _get(server, "/acclimation")
     current = dict(current) if isinstance(current, dict) else {}
-    was_running = bool(current.get("enabled"))
-    for key in ("enabled", "duration", "start_intensity_factor"):
+    for key in ("duration", "start_intensity_factor"):
         if body.get(key) is not None:
             current[key] = body[key]
-    # Starting (not a setting changed while it runs): from today
-    if current.get("enabled") and not was_running:
+    # A write starts it, from today: the integration and the app only send
+    # its settings ({duration, start_intensity_factor}), and stop it with
+    # DELETE /acclimation
+    current["enabled"] = enabled is not False
+    if current["enabled"]:
         current["started_on"] = int(moment().timestamp())
     _set(server, "/acclimation", current, ["GET", "POST"])
     refresh_acclimation(server)
@@ -513,7 +518,7 @@ def moon_factor(server: Any) -> float:
 
 
 def _write_moon(server: Any, body: Any) -> Response:
-    """``{enabled}`` and/or ``{moon_day}`` (today's day of the cycle)."""
+    """``{moon_day}`` (today's day of the cycle), optional: turns it on."""
     if not isinstance(body, dict):
         return 400, {"success": False, "message": "settings expected"}
     enabled = body.get("enabled")
@@ -529,13 +534,13 @@ def _write_moon(server: Any, body: Any) -> Response:
     current = _get(server, "/moonphase")
     current = dict(current) if isinstance(current, dict) else {}
     _moon_anchor(server, current)
-    restart = moon_day is not None
+    was_enabled = bool(current.get("enabled"))
     if moon_day is not None:
         server._moon_anchor = (today(), moon_day)
-    if enabled is not None:
-        restart = restart or (enabled and not current.get("enabled"))
-        current["enabled"] = enabled
-    if restart:
+    # A write turns it on (the integration and the app only send
+    # {moon_day}), DELETE /moonphase turns it off
+    current["enabled"] = enabled is not False
+    if current["enabled"] and (moon_day is not None or not was_enabled):
         current["started_on"] = int(moment().timestamp())
     _set(server, "/moonphase", current, ["GET", "POST"])
     refresh_moon(server)
@@ -855,6 +860,10 @@ def handle(server: Any, method: str, raw_path: str, body: Any) -> Optional[Respo
             if path == "/offset":
                 _set(server, "/offset", {"offset": 0}, ["GET", "POST", "DELETE"])
                 return 200, dict(_OK)
+            if path == "/acclimation":
+                return _write_acclimation(server, {"enabled": False})
+            if path == "/moonphase":
+                return _write_moon(server, {"enabled": False})
             day = _DAY_PATH.match(path)
             if day and day.group(1) == "clouds":
                 return _clear_clouds(server, int(day.group(2)))

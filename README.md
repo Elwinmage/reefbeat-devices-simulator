@@ -262,16 +262,17 @@ LED of the integration can group them:
 - `POST /manual` (white/blue/moon, or kelvin/intensity on a G2) and
   `POST /timer` set the levels by hand and the mode; `POST /mode`;
   `POST /identify`;
-- acclimation: `POST /acclimation` `{enabled, duration,
-  start_intensity_factor}` (each optional). Once enabled, the light starts
-  at `start_intensity_factor` % and goes back to 100 % over `duration`
-  days, in equal daily steps: `started_on` (timestamp), `remaining_days`
-  and `current_intensity_factor` follow, and white/blue (or the G2
-  intensity) are dimmed accordingly. Over, it turns itself off
-  (`started_on` back to `"never"`). A setting changed while it runs does
-  not start it again;
-- moon phase: `POST /moonphase` `{enabled}` and/or `{"moon_day": 1-28}`
-  (today's day of the cycle). A cycle of 28 days, new moon on day 1, full
+- acclimation: `POST /acclimation` `{duration, start_intensity_factor}`
+  (each optional) starts it from today, as the integration and the app do
+  (they send its settings only): `enabled` true, `started_on` (timestamp),
+  `remaining_days` at `duration`, `current_intensity_factor` at
+  `start_intensity_factor`. The light then goes back to 100 % over
+  `duration` days, in equal daily steps, white/blue (or the G2 intensity)
+  dimmed accordingly. Over, it turns itself off (`started_on` back to
+  `"never"`); `DELETE /acclimation` stops it. Written again, it starts
+  again;
+- moon phase: `POST /moonphase` `{"moon_day": 1-28}` (today's day of the
+  cycle, optional) turns it on, `DELETE /moonphase` turns it off. A cycle of 28 days, new moon on day 1, full
   moon on day 14: `todays_moon_day` moves on by one each day,
   `intensity` is the share of the full moon (day 2: 14 %, day 14: 100 %,
   day 28: 0 %, as real lamps report it), with `name`, `next_full_moon` and
