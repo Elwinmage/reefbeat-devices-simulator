@@ -259,7 +259,8 @@ LED of the integration can group them:
   `cloud_duration + no_cloud_duration`) and during an acclimation. A G2
   reports its intensity and colour temperature, and white/blue sensors
   derived from them. The dashboard's `current_program` shows today's name;
-- `POST /manual` (white/blue/moon, or kelvin/intensity on a G2) and
+- `POST /manual` (white/blue/moon, or kelvin/intensity/moon on a G2, which
+  computes its white and blue levels itself: written, they are ignored) and
   `POST /timer` set the levels by hand and the mode; `POST /mode`;
   `POST /identify`;
 - acclimation: `POST /acclimation` `{duration, start_intensity_factor}`

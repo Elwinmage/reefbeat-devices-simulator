@@ -187,10 +187,20 @@ def test_modes(g2: Any, g1_90: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     # The hand-set levels stay
     levels = manual(g2)
     assert (levels["intensity"], levels["white"], levels["blue"]) == (50, 0, 50)
-    call(g2, "POST", "/timer", {"white": 10, "duration": 30})
+    # A G2 computes its white and blue: written, they are ignored (the
+    # whole /manual read back and sent as it is would set them to 0)
+    body = {"kelvin": 12000, "intensity": 50, "white": 0, "blue": 0, "moon": 4}
+    call(g2, "POST", "/manual", body)
+    levels = manual(g2)
+    assert (levels["kelvin"], levels["intensity"], levels["moon"]) == (12000, 50, 4)
+    assert (levels["white"], levels["blue"]) == tuple(
+        int(round(v)) for v in led.white_blue_of(12000, 50)
+    )
+    assert levels["white"] > 0 and levels["blue"] > 0
+    call(g2, "POST", "/timer", {"white": 10, "intensity": 40, "duration": 30})
     assert g2.get_data("/mode") == {"mode": "timer"}
     assert g2.get_data("/timer") == {"timer_status": "timer enabled", "duration": 30}
-    assert manual(g2)["white"] == 10
+    assert manual(g2)["white"] == int(round(led.white_blue_of(12000, 40)[0]))
     call(g2, "POST", "/mode", {"mode": "off"})
     assert manual(g2)["intensity"] == 0
     assert call(g2, "POST", "/mode", {})[0] == 400

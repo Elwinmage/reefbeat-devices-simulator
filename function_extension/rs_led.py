@@ -749,7 +749,10 @@ def _write_manual(server: Any, body: Any, new_mode: str) -> Response:
         manual["intensity"] = int(round(intensity))
         _channel_fields(manual, "white", white)
         _channel_fields(manual, "blue", blue)
-    for key in ("white", "blue", "moon"):
+    # A G2 computes its white and blue levels from its colour temperature
+    # and intensity: they are read only, what is written of them is ignored
+    written = ("moon",) if is_g2(server) else ("white", "blue", "moon")
+    for key in written:
         if key in body:
             _channel_fields(manual, key, _num(body[key]))
     _set(server, "/manual", manual)
